@@ -111,3 +111,17 @@ Trước Sandbox, web `/api` qua Vite → Python local → router/submit/worker/
 Worker M2 hỗ trợ thêm Gemini 3.8 Flash TTS, dùng chung submit M5, Common Layer/jobs/audio M3, polling/history và giao diện M4. Azure vẫn mặc định; lựa chọn provider đi trong request và được lưu vào job, không suy theo provider đang chọn ở giao diện khi worker chạy. Không có endpoint/Lambda/AWS service mới. Gemini nhận văn bản và style metadata, trả WAV PCM; encoder LAME đóng gói Linux chuyển thành MP3 thật trước S3. Model OCR/typo/dịch không thay đổi. Dịch vẫn Azure Translator rồi TTS được chọn, không khôi phục giao diện dịch Gemini.
 
 Cấu hình/quota riêng, không fallback, giới hạn chunk/response, đóng gói và trạng thái nghiệm thu ở [CONVENTIONS](CONVENTIONS.md#gemini-tts-tùy-chọn--bổ-sung-13112026), [local](../deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng) và [Sandbox](AZURE-SPEECH.md#gemini-tts-trên-sandbox). Hai mẫu provider thật trên Moto không chứng minh đã triển khai AWS hoặc đạt thay thế Polly theo đề.
+
+## Audio Truyện STORY-01A (coded, locally tested)
+
+Web/app → CloudFront `/audiobooks*` → M1 router → M5 handler Audio Truyện → Common Layer M3 → jobs bucket S3, prefix `audiobooks/demo/`. Mỗi project/chapter có metadata riêng; source chia upload chunks, segment pages và revision riêng. Chapter manifest chỉ đổi sau khi đủ dữ liệu; ETag/CAS tránh hai cập nhật ghi đè nhau. Web xuất/nhập JSON backup; Expo quản lý project/chapter cơ bản. STORY-01A chỉ lưu nội dung; STORY-01B nối batch MP3 qua M5 Submit, M2 worker và M3 jobs/audio. [API và giới hạn](CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+
+## Audio Truyện STORY-01B (coded, locally tested)
+
+Plan cố định lấy segment từ revision S3 đã lưu. M3 giữ `plan.json`, `run.json`, từng queue item riêng và project dispatch slots dưới `audiobooks/demo/`. M5 claim bằng CAS, kiểm quota ước tính rồi gọi cùng logic Submit/idempotency; M2 nhận Lambda Event và tạo audio; M3 job/audio là nguồn xác nhận DONE. Web có thể gọi tick; Expo có tick thủ công. STORY-01C thêm completion destination để callback M2→M5 cấp segment kế tiếp khi client đã đóng. Queue vẫn đọc được sau reload. Kiểm thử callback chỉ dùng fake S3/Lambda/provider; chưa có MP3 thật từ batch trên Sandbox. [Hợp đồng batch](CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026).
+
+## Audio Truyện STORY-01C (implemented local, headless partial)
+
+Web/Expo gọi API M1→M5 để Pause/Resume/Retry; run, queue items và slot giữ ở S3/M3. M2 có một EventInvokeConfig duy nhất, gọi M5 khi worker hoàn tất hoặc cạn retry; callback đối chiếu job/queue qua CAS rồi có thể dispatch tối đa một item mới. Duplicate/stale callback không được tạo attempt thứ hai. Pause chặn claim mới còn job đang chạy được đối soát; retry chỉ nhận FAILED có thể retry, giới hạn attempt và backoff; UNCERTAIN cần kiểm tra, không tự replay provider. Web/Expo poll chỉ để hiển thị trạng thái.
+
+Callback mô phỏng đạt chuỗi nhiều segment không cần client tick, nhưng chưa có scheduler hoặc reconciler định kỳ độc lập. Mất callback hoặc hết phiên Lab có thể làm batch dừng cần thao tác người dùng/operator. Quyền và delivery destination trên AWS Academy chưa kiểm tra; vì vậy headless là **partial**, chưa deployable hoặc AWS verified. [Hợp đồng và giới hạn](CONVENTIONS.md#audio-truyện-story-01c--pause-resume-retry-và-headless-15112026).

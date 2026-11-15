@@ -246,3 +246,11 @@ Người dùng giao `TTS-INTEGRATION-03`: web/app gọi Azure Translator để p
 ## 16. Hướng dẫn cá nhân GUIDE.md
 
 `GUIDE.md` ở thư mục gốc là bản giải thích dễ đọc, riêng cho người dùng hiện tại và được ignore khỏi Git theo yêu cầu. Sau mỗi commit mới do người dùng tạo hoặc sau khi pull/merge commit mới của thành viên, nếu đang hỗ trợ người dùng trong workspace này thì cập nhật GUIDE.md: ghi commit/hash/ngày, thay đổi chức năng, file/owner bị ảnh hưởng, cách dùng và mức kiểm chứng; giữ lịch sử phần cũ và sửa nội dung đã lỗi thời. Không coi GUIDE.md là nguồn hợp đồng kỹ thuật; README/CHANGELOG của owner, CONVENTIONS và code mới là nguồn chuẩn. Vì GUIDE.md bị ignore, thay đổi này không tự được gửi tới máy của thành viên khác; khi hướng dẫn họ, nói rõ cần tạo/cập nhật bản local tương ứng.
+
+## 17. Audio Truyện STORY-01A — 14/11/2026
+
+Được triển khai Project → Chapter → Segment và nhập chương dài trên web, quản lý cơ bản trên Expo. M1 route `/audiobooks*` và CORS; M5 giữ handler riêng trong submit Lambda; M3 sở hữu S3 metadata/CAS; M4 giữ UI, parser tài liệu và CloudFront. Nguồn chuẩn là [hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026). Không tạo MP3 hàng loạt, queue, AI phân vai hoặc dịch cả chương trong STORY-01A. Dữ liệu nằm ở jobs bucket dưới `audiobooks/demo/`; local Moto mất dữ liệu khi dừng backend, cần xuất backup trước khi kết thúc Lab. Thay đổi M1/M3/M4 cần owner review; code/test local không có nghĩa đã deploy AWS.
+
+## 18. Audio Truyện STORY-01B — 14/11/2026
+
+Được triển khai batch TTS từ segment đã lưu: M3 giữ plan/queue/CAS slot, M5 lập plan và cấp từng item qua Submit/idempotency/quota, M2 worker tạo audio theo luồng hiện có, M1 route và SAM wiring, M4 web/Expo hiển thị progress. Plan cố định theo revision và chỉ đọc ngôn ngữ nguồn, không tự dịch. Web đang mở gọi tick; Expo có tick thủ công. Không có backend scheduler tiếp tục cấp item khi đóng cả hai client; pause/resume/retry thuộc STORY-01C. Nguồn chuẩn là [hợp đồng batch](docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026). Các owner M1/M3/M4 và M2 ở giao diện worker/quota cần review; local fake audio không chứng minh MP3 thật trên Sandbox. Không tự commit, push, deploy hay gọi provider thật.

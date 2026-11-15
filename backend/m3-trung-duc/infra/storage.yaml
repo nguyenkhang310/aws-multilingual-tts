@@ -33,11 +33,50 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [POST]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            MaxAge: 3600
       LifecycleConfiguration:
         Rules:
           - Id: expire-jobs
             Status: Enabled
+            Prefix: !Ref JobsPrefix
             ExpirationInDays: !Ref RetentionDays
+          - Id: expire-idempotency
+            Status: Enabled
+            Prefix: idempotency/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-usage
+            Status: Enabled
+            Prefix: usage/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-typo-usage
+            Status: Enabled
+            Prefix: typo-usage/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-translation-usage
+            Status: Enabled
+            Prefix: translation-usage/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-ocr-usage
+            Status: Enabled
+            Prefix: ocr-usage/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-emotion-usage
+            Status: Enabled
+            Prefix: emotion-usage/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-gemini-usage
+            Status: Enabled
+            Prefix: tts-gemini-usage/
+            ExpirationInDays: !Ref RetentionDays
+          - Id: expire-uncommitted-audiobook-covers
+            Status: Enabled
+            Prefix: audiobook-cover-staging/
+            ExpirationInDays: 1
 
   AudioBucket:
     Type: AWS::S3::Bucket

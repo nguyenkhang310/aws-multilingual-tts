@@ -2,13 +2,35 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import struct
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
 from urllib.error import URLError
+import zlib
 
 import server
+
+
+def png_cover():
+    def chunk(name, payload):
+        value = name + payload
+        return struct.pack('>I', len(payload)) + value + struct.pack('>I', zlib.crc32(value) & 0xffffffff)
+    header = struct.pack('>IIBBBBB', 2, 3, 8, 6, 0, 0, 0)
+    pixels = b''.join(b'\0\xff\0\0\xff\xff\0\0\xff' for _ in range(3))
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(pixels)) + chunk(b'IEND', b'')
+
+
+def multipart(fields, image):
+    boundary = 'local-cover-boundary'
+    chunks = []
+    for name, value in fields.items():
+        chunks += [f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                   str(value).encode(), b'\r\n']
+    chunks += [f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="cover.png"\r\nContent-Type: image/png\r\n\r\n'.encode(),
+               image, f'\r\n--{boundary}--\r\n'.encode()]
+    return b''.join(chunks), f'multipart/form-data; boundary={boundary}'
 
 
 class RuntimeTests(unittest.TestCase):
@@ -88,6 +110,28 @@ class RuntimeTests(unittest.TestCase):
         result = self.synthesize()
         self.assertEqual(result['status'], 'DONE')
         self.assertEqual(self.request.call_count, 1)
+
+    def test_story_cover_uses_local_moto_bridge_not_aws_s3_url(self):
+        image = png_cover()
+        _, project = self.call('POST', '/audiobooks',
+            {'title': 'Local', 'sourceLang': 'vi-VN', 'targetLang': 'vi-VN'})
+        pid = project['projectId']
+        _, ticket = self.call('POST', f'/audiobooks/{pid}/cover-upload',
+            {'contentType': 'image/png', 'sizeBytes': len(image), 'version': project['version']})
+        self.assertEqual(ticket['url'], 'http://127.0.0.1:8000/local/story-cover-upload')
+        body, content_type = multipart(ticket['fields'], image)
+        self.runtime.accept_cover_upload(body, content_type)
+        status, saved = self.call('POST', f'/audiobooks/{pid}/cover',
+            {'uploadId': ticket['uploadId'], 'version': ticket['version']})
+        self.assertEqual(status, 200)
+        cover = saved['project']['cover']
+        self.assertTrue(cover['url'].startswith('http://127.0.0.1:8000/local/story-cover/'))
+        self.assertNotIn('amazonaws.com', cover['url'])
+        from urllib.parse import parse_qs, urlsplit
+        self.assertEqual(self.runtime.cover(pid, parse_qs(urlsplit(cover['url']).query)), (image, 'image/png'))
+        query = parse_qs(urlsplit(cover['url']).query)
+        query['signature'] = ['0' * 64]
+        self.assertIsNone(self.runtime.cover(pid, query))
 
 
 if __name__ == '__main__':

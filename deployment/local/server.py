@@ -68,6 +68,9 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
     if not path.is_file():
         raise ValueError('Chưa có deployment/local/.env.local. Sao chép .env.example rồi điền cấu hình.')
     values = {key: value or '' for key, value in dotenv_values(path, interpolate=False).items()}
+    # Old local env files may retain settings for the removed character feature.
+    for name in ('GEMINI_STORY_ENABLED', 'GEMINI_STORY_MODEL', 'STORY_DAILY_CALL_LIMIT'):
+        values.pop(name, None)
     result = {
         'LOCAL_HOST': '127.0.0.1', 'LOCAL_PORT': '8000', 'LOCAL_PUBLIC_URL': '',
         'AZURE_SPEECH_KEY': '', 'AZURE_SPEECH_REGION': 'eastasia',
@@ -75,7 +78,8 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
         'GEMINI_API_KEY': '', 'GEMINI_MODEL': '', 'GEMINI_TYPO_ENABLED': 'false', 'GEMINI_TIMEOUT_SECONDS': '8', 'GEMINI_TRANSLATION_ENABLED': 'false', 'GEMINI_EMOTION_ENABLED': 'false',
         'GEMINI_OCR_ENABLED': 'false', 'GEMINI_OCR_MODEL': 'gemini-3.5-flash-lite', 'OCR_DAILY_CALL_LIMIT': '100',
         'GEMINI_TTS_ENABLED': 'false', 'GEMINI_TTS_MODEL': 'gemini-3.8-flash-tts', 'GEMINI_TTS_DAILY_CALL_LIMIT': '100',
-        'DEMO_TOKEN': '', 'MAX_CHARS': '10000', 'DAILY_CHAR_LIMIT': '30000',
+        'DEMO_TOKEN': '', 'MAX_CHARS': '10000', 'DAILY_CHAR_LIMIT': '30000', 'STORY_MAX_ACTIVE': '1',
+        'STORY_TRANSLATION_DAILY_CHARS': '100000',
     }
     if values.keys() - result.keys():
         raise ValueError('Có biến không được hỗ trợ trong .env backend. Chỉ dùng các biến trong .env.example.')
@@ -107,11 +111,13 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
     if any(result[name] == 'true' for name in gemini_flags):
         if not result['GEMINI_API_KEY'] or not re.fullmatch(r'gemini-[A-Za-z0-9._-]{1,60}', result['GEMINI_MODEL']):
             raise ValueError('Bật Gemini cần GEMINI_API_KEY và GEMINI_MODEL hợp lệ ở backend; Azure vẫn dùng key riêng.')
-    for name in ['LOCAL_PORT', 'MAX_CHARS', 'DAILY_CHAR_LIMIT']:
+    for name in ['LOCAL_PORT', 'MAX_CHARS', 'DAILY_CHAR_LIMIT', 'STORY_MAX_ACTIVE', 'STORY_TRANSLATION_DAILY_CHARS']:
         if not result[name].isdigit() or int(result[name]) < 1:
             raise ValueError(f'{name} phải là số nguyên dương.')
     if int(result['LOCAL_PORT']) > 65535 or not 100 <= int(result['MAX_CHARS']) <= 10000:
         raise ValueError('Port tối đa 65535; MAX_CHARS từ 100 đến 10000.')
+    if int(result['STORY_MAX_ACTIVE']) not in {1, 2}:
+        raise ValueError('STORY_MAX_ACTIVE chỉ nhận 1 hoặc 2.')
     if result['LOCAL_HOST'] not in {'127.0.0.1', 'localhost', '0.0.0.0'}:
         raise ValueError('LOCAL_HOST dùng 127.0.0.1, localhost hoặc 0.0.0.0 để thử trên LAN.')
     for name in ['AZURE_SPEECH_REGION', 'AZURE_TRANSLATOR_REGION']:
@@ -204,6 +210,7 @@ class Runtime:
             'AZURE_TRANSLATOR_REGION': self.values['AZURE_TRANSLATOR_REGION'],
             'TTS_API_PARAMETER_NAME': '/local/azure-speech',
             'TRANSLATOR_API_PARAMETER_NAME': '/local/azure-translator' if self.values['AZURE_TRANSLATOR_KEY'] else '',
+            'STORY_TRANSLATION_DAILY_CHARS': self.values['STORY_TRANSLATION_DAILY_CHARS'],
             'GEMINI_TYPO_ENABLED': self.values['GEMINI_TYPO_ENABLED'],
             'GEMINI_TIMEOUT_SECONDS': self.values['GEMINI_TIMEOUT_SECONDS'],
             'GEMINI_EMOTION_ENABLED': self.values['GEMINI_EMOTION_ENABLED'],
@@ -225,8 +232,12 @@ class Runtime:
             sys.path.insert(0, str(ROOT / path))
             self.stack.callback(sys.path.remove, str(ROOT / path))
         from tts_common import aws, config, storage, voices
+        from tts_common import story_covers, story_projects
         from providers import common
         self.aws, self.config, self.storage, self.voices = aws, config, storage, voices
+        self.story_covers, self.story_projects = story_covers, story_projects
+        self.s3_cover_begin = story_covers.begin
+        self.local_covers = load_module('local_story_covers', 'deployment/local/story_covers.py')
         self.s3 = LockedClient(boto3.client('s3', region_name='us-east-1'))
         for bucket in ['tts-local-jobs', 'tts-local-audio']:
             self.s3.create_bucket(Bucket=bucket)
@@ -248,6 +259,8 @@ class Runtime:
         self.replace(aws, 's3', lambda: self.s3)
         self.replace(aws, 'lambda_client', lambda: self)
         self.replace(storage, 'get_audio_url', self.audio_url)
+        self.replace(story_covers, 'begin', self.begin_cover)
+        self.replace(story_covers, 'public_view', self.public_cover_view)
         self.worker = load_module('local_worker', 'backend/m2-trung-khang/synthesize/app.py')
         self.router = load_module('local_router', 'backend/m1-minh-ly/http/app.py')
         self.handlers = {
@@ -312,6 +325,37 @@ class Runtime:
         signature = hmac.new(self.secret, f'{job}:{expires}'.encode(), hashlib.sha256).hexdigest()
         return f"{self.values['LOCAL_PUBLIC_URL']}/media/{quote(job)}?{urlencode({'expires': expires, 'signature': signature})}"
 
+    def begin_cover(self, scope, project_id, content_type, size_bytes, version):
+        ticket = self.s3_cover_begin(scope, project_id, content_type, size_bytes, version)
+        return self.local_covers.upload_ticket(self.secret, self.values['LOCAL_PUBLIC_URL'], project_id,
+                                               ticket, content_type, size_bytes)
+
+    def public_cover_view(self, scope, project_id, project):
+        if not self.story_covers._owned_key(scope, project_id, project.get('coverKey')):
+            if project.get('coverKey'):
+                raise ValueError('Local cover key is outside its project')
+            return None
+        return self.local_covers.public_view(self.secret, self.values['LOCAL_PUBLIC_URL'], project_id, project)
+
+    def accept_cover_upload(self, body, content_type):
+        self.local_covers.accept_upload(body, content_type, self.secret, self.s3, self.config.JOBS_BUCKET)
+
+    def cover(self, project_id, query):
+        from tts_common.story_store import StoryError
+        try:
+            project, _ = self.story_projects.get('demo', project_id)
+            expires, signature = query['expires'][0], query['signature'][0]
+            if not self.story_covers._owned_key('demo', project_id, project.get('coverKey')) or not self.local_covers.valid_view(
+                    self.secret, project_id, project['coverUpdatedAt'], expires, signature):
+                return None
+            response = self.s3.get_object(Bucket=self.config.JOBS_BUCKET, Key=project['coverKey'])
+            try:
+                return response['Body'].read(), project['coverContentType']
+            finally:
+                response['Body'].close()
+        except (StoryError, KeyError, IndexError, self.s3.exceptions.NoSuchKey):
+            return None
+
     def audio(self, job, query):
         from tts_common.utils import are_valid_ids
         if not are_valid_ids('demo', job):
@@ -373,7 +417,9 @@ def handler_class(runtime):
             if host not in allowed_hosts:
                 return self.error(403, 'FORBIDDEN', 'Host không thuộc môi trường local.')
             origin = self.headers.get('Origin')
-            allowed = {'http://127.0.0.1:5173', 'http://localhost:5173', runtime.values['LOCAL_PUBLIC_URL'], f'http://{public.hostname}:5173'}
+            allowed = {'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8081',
+                       'http://localhost:8081', runtime.values['LOCAL_PUBLIC_URL'],
+                       f'http://{public.hostname}:5173', f'http://{public.hostname}:8081'}
             if origin and origin not in allowed:
                 return self.error(403, 'FORBIDDEN', 'Origin không thuộc môi trường local.')
             self.allowed_origin = origin
@@ -399,12 +445,35 @@ def handler_class(runtime):
                     status, headers['Content-Range'] = 206, f'bytes {start}-{end}/{len(data)}'
                     data = data[start:end + 1]
                 return self.send(status, data, headers)
+            if path.path == '/local/story-cover-upload' and self.command == 'OPTIONS':
+                return self.send(204, b'', {'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600'})
+            if path.path == '/local/story-cover-upload' and self.command == 'POST':
+                if self.headers.get('Transfer-Encoding'):
+                    return self.error(400, 'INVALID_INPUT', 'Không hỗ trợ body dạng chunked ở local.')
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < length <= 5 * 1024 * 1024 + 64 * 1024:
+                        return self.error(413, 'PAYLOAD_TOO_LARGE', 'Ảnh bìa tối đa 5 MiB.')
+                    runtime.accept_cover_upload(self.rfile.read(length), self.headers.get('Content-Type', ''))
+                except ValueError:
+                    return self.error(400, 'INVALID_COVER_UPLOAD', 'Ảnh tải lên không hợp lệ hoặc đã hết hạn.')
+                return self.send(204, b'', {'Content-Type': 'text/plain'})
+            cover_match = re.fullmatch(r'/local/story-cover/([a-f0-9]{32})', path.path)
+            if cover_match and self.command in {'GET', 'HEAD'}:
+                result = runtime.cover(cover_match.group(1), parse_qs(path.query))
+                if result is None:
+                    return self.error(404, 'NOT_FOUND', 'Ảnh bìa không còn hoặc link đã hết hạn.')
+                data, content_type = result
+                return self.send(200, data, {'Content-Type': content_type, 'Cache-Control': 'private, max-age=60'})
             if self.headers.get('Transfer-Encoding'):
                 return self.error(400, 'INVALID_INPUT', 'Không hỗ trợ body dạng chunked ở local.')
             try:
                 length = int(self.headers.get('Content-Length', '0'))
                 if length < 0 or length > runtime.router.body_limit(path.path, self.command):
-                    return self.error(400, 'TEXT_TOO_LONG', 'Yêu cầu vượt giới hạn cho phép.')
+                    return self.error(413 if path.path.startswith('/audiobooks') else 400,
+                                      'PAYLOAD_TOO_LARGE' if path.path.startswith('/audiobooks') else 'TEXT_TOO_LONG',
+                                      'Yêu cầu vượt giới hạn cho phép.')
                 body = self.rfile.read(length).decode('utf-8') if length else None
             except (ValueError, UnicodeError):
                 return self.error(400, 'INVALID_INPUT', 'Body hoặc Content-Length không hợp lệ.')

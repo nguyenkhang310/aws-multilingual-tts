@@ -8,7 +8,7 @@ type Page<V extends { width: number; height: number }> = {
   cleanup(): void;
 };
 type Pdf<V extends { width: number; height: number }> = { numPages: number; getPage(page: number): Promise<Page<V>> };
-export type ImportOptions = { lang?: string; scan?: boolean; ocrBase?: string; signal?: AbortSignal; recognize?: Recognize; onProgress?: (message: string) => void; onWarning?: (message: string) => void };
+export type ImportOptions = { lang?: string; scan?: boolean; ocrBase?: string; signal?: AbortSignal; recognize?: Recognize; maxChars?: number; onProgress?: (message: string) => void; onWarning?: (message: string) => void };
 export type Recognize = (image: HTMLCanvasElement) => Promise<string>;
 
 export function checkCancelled(options: ImportOptions) {
@@ -86,11 +86,12 @@ export async function pdfText<V extends { width: number; height: number }>(pdf: 
       }
       text = text.trim();
       texts.push(text); length += text.length + (index > 1 ? 2 : 0);
-      if (length > MAX_DOCUMENT_CHARS) throw new Error('Tài liệu vượt 200.000 ký tự. Hãy chia nhỏ tệp.');
+      if (length > (options.maxChars ?? MAX_DOCUMENT_CHARS))
+        throw new Error(`Tài liệu vượt ${(options.maxChars ?? MAX_DOCUMENT_CHARS).toLocaleString('vi-VN')} ký tự. Hãy chia nhỏ tệp.`);
     } finally { page.cleanup(); }
   }
   checkCancelled(options);
-  return checkedDocument(texts.join('\n\n'));
+  return checkedDocument(texts.join('\n\n'), options.maxChars);
 }
 
 export async function imageText(source: string, recognize: Recognize, options: ImportOptions = {}) {
@@ -117,6 +118,6 @@ export async function imageText(source: string, recognize: Recognize, options: I
     try { text = (await abortable(recognize(prepared), options)).normalize('NFC'); }
     finally { if (prepared !== canvas) { prepared.width = 0; prepared.height = 0; } }
     checkCancelled(options);
-    return checkedDocument(text);
+    return checkedDocument(text, options.maxChars);
   } finally { canvas.width = 0; canvas.height = 0; image.src = ''; }
 }

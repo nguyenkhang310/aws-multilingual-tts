@@ -4,6 +4,7 @@ const names: Record<string, string> = {
   excited: 'Hào hứng', friendly: 'Thân thiện', hopeful: 'Hy vọng', empathetic: 'Đồng cảm', calm: 'Điềm tĩnh',
   fearful: 'Sợ hãi', terrified: 'Kinh hãi', shouting: 'Nói lớn', whispering: 'Thì thầm', serious: 'Nghiêm túc',
   chat: 'Trò chuyện', unfriendly: 'Lạnh lùng', customerservice: 'Hỗ trợ khách hàng', newscast: 'Đọc tin', 'newscast-casual': 'Tin nhẹ nhàng',
+  livecommercial: 'Giới thiệu sản phẩm trực tiếp',
   'newscast-formal': 'Tin trang trọng', 'narration-professional': 'Thuyết minh', 'narration-relaxed': 'Kể chuyện nhẹ nhàng',
   affectionate: 'Trìu mến', assistant: 'Trợ lý', depressed: 'Trầm buồn', disgruntled: 'Không hài lòng',
   embarrassed: 'Ngượng ngùng', envious: 'Ghen tị', 'poetry-reading': 'Đọc thơ', 'sports-commentary': 'Bình luận thể thao',

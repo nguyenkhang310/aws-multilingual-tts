@@ -57,6 +57,16 @@ class AzurePreviewTest(FlowTestCase):
              mock.patch.object(self.lambda_client, 'invoke', return_value=response):
             status, body = self.preview()
         self.assertEqual((status, body['error']['code']), (503, 'TRANSLATION_REJECTED'))
+        self.assertTrue(response['Payload'].closed)
+        self.assertFalse(self.s3.objects)
+
+    def test_oversized_worker_response_is_closed_and_never_creates_job(self):
+        stream = io.BytesIO(b'x' * 250001)
+        with mock.patch.dict(os.environ, {"TRANSLATOR_API_PARAMETER_NAME": "/test/translator"}), \
+             mock.patch.object(self.lambda_client, 'invoke', return_value={"StatusCode": 200, "Payload": stream}):
+            status, body = self.preview()
+        self.assertEqual((status, body['error']['code']), (503, 'TRANSLATION_UNAVAILABLE'))
+        self.assertTrue(stream.closed)
         self.assertFalse(self.s3.objects)
 
 

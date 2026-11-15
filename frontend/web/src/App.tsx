@@ -1017,7 +1017,8 @@ export default function App() {
         </Modal>
       )}
       {studio.review && <CorrectionReview key={JSON.stringify(studio.review.correction)} correction={studio.review.correction}
-        translation={studio.review.translation} onChoose={(selected) => void studio.resolveReview(selected)} onClose={studio.cancelReview} />}
+        translation={studio.review.translation} error={studio.error} limit={studio.review.partLimit}
+        onChoose={(selected) => void studio.resolveReview(selected)} onClose={studio.cancelReview} />}
       <div className="toast-region" aria-live="polite" aria-atomic="true">
         {toast && (
           <div className={`toast ${toast.error ? "toast-error" : ""}`}>

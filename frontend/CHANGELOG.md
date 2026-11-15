@@ -6,6 +6,13 @@ Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời
 **Người phụ trách:** Nguyên Khang
 **Danh sách việc:** [README](README.md)
 
+## 2026-11-16 — Review tích hợp M5 tới 8224da7 trước đợt Audio Truyện
+
+- Ghép 13 commit từ `587dfde` tới `8224da7`, giữ nguyên lịch sử M5. Web/app có Azure preview, duyệt bản dịch/chính tả, cường độ sắc thái, bỏ chờ AI và đo thời gian. App gom màn duyệt vào `TextReview`, xếp cột trên màn hẹp/chữ lớn, lỗi ngay trong màn duyệt; khôi phục tạo hàng loạt khi tắt typo, giữ từng phần khi cần duyệt. Thêm chặn DONE thiếu MP3, giữ bản dịch tự chỉnh khi thử lại và bỏ lỗi preview cũ sau khi đổi nháp.
+- Web/app dùng chung phân loại lỗi submit, có `UNSUPPORTED_STYLE_INTENSITY`; backend giới hạn/đóng response preview. Regression cho retry bản dịch, phản hồi muộn, mã idempotency và response quá lớn. Giữ chuyển động/kính và env/key thật.
+- Kiểm local nền `8224da7` cùng các sửa tích hợp: M1 **37**, M2 **114**, M3 **53**, M5 **114**, runtime **17**, web **117**, app **68** tests PASS (**520**); web build, app typecheck/lint, Expo export iOS/Android/web và cfn-lint PASS. Chrome **31 trường hợp**: 7 luồng (dịch/typo/duyệt, hủy/retry, cảm xúc/cường độ, bỏ chờ, batch không trùng, thiếu audio, web preview) và 24 bố cục sáng/tối ở 320/390/768 px, ngang 844 px và desktop 1440 px. Không pageerror hoặc request provider; dùng fixture ngoài repo, chưa kiểm native/provider/Sandbox thật.
+- Trong lúc chốt, người dùng báo M5 push thêm Audio Truyện; giữ các sửa đã kiểm bằng commit local trước khi merge tiếp. Chưa push hoặc deploy trong bước này, ba stash cũ nguyên vẹn. Kết quả đợt Audio Truyện phải ghi riêng sau khi kiểm lại.
+
 ## 2026-11-14 — Kiểm tra luồng chính tả theo nguồn giọng (local)
 
 - Sửa web `Tạo tất cả các phần` để tôn trọng công tắc Kiểm tra chính tả bằng AI; trước đó luồng này luôn gửi `/text/correct` kể cả khi tắt. Giữ trạng thái kiểm tra ngay dưới ô nhập sau khi tạo bản thu, vì toast cũ bị thông báo hoàn tất thay thế. Kiểm thử cho Azure và Gemini xác nhận công tắc tắt gửi nguyên văn, bật thì có đề xuất mới mở màn duyệt trước khi tạo job.

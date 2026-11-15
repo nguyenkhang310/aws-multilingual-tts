@@ -1,7 +1,7 @@
 import { catalogLanguages } from '../../../shared/voices';
 import { MAX_CHARS, type Correction, type Input, type Job, type Language, type Recording, isRecording } from './model';
 import { sha256Hex } from './sha256';
-import { SubmissionLedger } from '../../../shared/submissions';
+import { SubmissionLedger, isSubmissionRejected } from '../../../shared/submissions';
 import { checkedRecognition, type DocumentPage, type DocumentResult } from '../../../shared/vision';
 const submissions = new SubmissionLedger();
 submissions.configure({}, async () => { throw new Error('Chưa đọc được mã yêu cầu đã lưu. Hãy mở lại ứng dụng trước khi tạo bản thu.'); });
@@ -97,7 +97,7 @@ export const api = {
       if (result.status === 'DONE' || result.status === 'FAILED') await submissions.finish(result.jobId);
       return result;
     } catch (error) {
-      if (error instanceof ApiError && ['TOO_MANY_REQUESTS', 'INVALID_INPUT', 'LANG_REQUIRED', 'LANG_NOT_SUPPORTED', 'TEXT_TOO_LONG', 'INVALID_PROVIDER', 'GEMINI_TTS_NOT_CONFIGURED', 'UNSUPPORTED_SPEED', 'UNSUPPORTED_STYLE', 'EMOTION_NOT_CONFIGURED', 'FEATURE_NOT_ENABLED', 'TRANSLATION_NOT_CONFIGURED'].includes(error.code)) await submissions.reject(digest);
+      if (error instanceof ApiError && isSubmissionRejected(error.code)) await submissions.reject(digest);
       throw error;
     }
   },

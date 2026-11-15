@@ -18,7 +18,11 @@ def preview(text, source, target):
         )
         if response.get("StatusCode") != 200 or response.get("FunctionError"):
             raise RuntimeError("Translation worker failed")
-        result = json.loads(response["Payload"].read())
+        with response["Payload"] as payload:
+            raw = payload.read(250001)
+        if len(raw) > 250000:
+            raise ValueError("Translation response too large")
+        result = json.loads(raw)
     except Exception as error:
         log_json(module="M5", operation="preview_translation", status="UNAVAILABLE", errorCode=type(error).__name__)
         return error_response(503, "TRANSLATION_UNAVAILABLE", "Chưa lấy được bản dịch. Vui lòng thử lại.")

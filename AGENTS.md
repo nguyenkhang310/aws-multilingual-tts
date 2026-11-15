@@ -243,6 +243,12 @@ Trong yêu cầu tiếp theo cùng ngày, người dùng giao bật Gemini TTS l
 
 Người dùng giao `TTS-INTEGRATION-03`: web/app gọi Azure Translator để preview, cho sửa và xác nhận bản dịch, sau đó kiểm typo trên văn bản đích rồi mới gọi `/synthesize` với `lang` đích và `translateTo=null`. API Gemini `/text/translate` vẫn độc lập; client cũ dùng `translateTo` vẫn tương thích. Endpoint mới `POST /text/preview-translation` đi qua M1 → M5 → worker M2 đồng bộ, dùng adapter Azure hiện có; không tạo job/MP3 và không dùng quota TTS. Frontend giữ preview trong phiên cho phần tài liệu đã lấy, duyệt từng phần; kết quả không có manifest bền vững qua reload. Gemini correction cho phép giữ gốc, chọn đề xuất hoặc tự chỉnh; lỗi/skipped báo rõ rồi dùng văn bản đã chọn. Chưa gọi provider/AWS thật hoặc deploy trong task này; M1/M2/M4 review diff theo owner. Hợp đồng chi tiết ở CONVENTIONS và hướng dẫn bật typo thủ công ở AZURE-SPEECH.
 
-## 16. Hướng dẫn cá nhân GUIDE.md
+## 17. Hướng dẫn cá nhân GUIDE.md
 
 `GUIDE.md` ở thư mục gốc là bản giải thích dễ đọc, riêng cho người dùng hiện tại và được ignore khỏi Git theo yêu cầu. Sau mỗi commit mới do người dùng tạo hoặc sau khi pull/merge commit mới của thành viên, nếu đang hỗ trợ người dùng trong workspace này thì cập nhật GUIDE.md: ghi commit/hash/ngày, thay đổi chức năng, file/owner bị ảnh hưởng, cách dùng và mức kiểm chứng; giữ lịch sử phần cũ và sửa nội dung đã lỗi thời. Không coi GUIDE.md là nguồn hợp đồng kỹ thuật; README/CHANGELOG của owner, CONVENTIONS và code mới là nguồn chuẩn. Vì GUIDE.md bị ignore, thay đổi này không tự được gửi tới máy của thành viên khác; khi hướng dẫn họ, nói rõ cần tạo/cập nhật bản local tương ứng.
+
+## 18. Tích hợp nhánh M5 và đồng bộ app — 15/11/2026
+
+Người dùng giao lấy code M5, review, đưa tính năng mới lên app và đồng bộ tất cả các nhánh. Giữ toàn bộ 13 commit tới `8224da7`, không viết lại lịch sử hoặc force-push. Phạm vi gồm duyệt bản dịch/chính tả, cường độ sắc thái, đo thời gian, launcher và sửa lỗi tích hợp; không tự sửa key/env, gọi provider thật hoặc deploy AWS.
+
+App dùng chung `TextReview` cho bản dịch và chính tả, xếp một cột trên màn hẹp/chữ lớn, lỗi và giới hạn nhập nằm trong màn duyệt. Dịch/chính tả bật phải duyệt từng phần; Tạo giọng đọc khi tắt kiểm chính tả vẫn hỗ trợ hàng loạt và dừng sau phần hiện tại. Giữ bản dịch tự chỉnh khi thử lại; response cũ không ghi lỗi vào bản nháp mới. Web/app dùng chung phân loại lỗi submit, gồm `UNSUPPORTED_STYLE_INTENSITY` xảy ra trước job. Export/mock/browser không phải nghiệm thu native hoặc Sandbox; evidence tích hợp chỉ bổ sung CHANGELOG M4.

@@ -3,11 +3,13 @@ import { Button, Modal } from "./ui";
 import { MAX_CHARS } from "../lib/data";
 import type { TextCorrection } from "../lib/types";
 
-export default function CorrectionReview({ correction, onChoose, onClose, translation = false }: {
+export default function CorrectionReview({ correction, onChoose, onClose, translation = false, error = '', limit = MAX_CHARS }: {
   correction: TextCorrection;
   onChoose: (text: string) => void;
   onClose: () => void;
   translation?: boolean;
+  error?: string;
+  limit?: number;
 }) {
   const [edited, setEdited] = useState(correction.correctedText);
   let end = 0;
@@ -24,7 +26,8 @@ export default function CorrectionReview({ correction, onChoose, onClose, transl
       <section><h3>{translation ? "Bản dịch Azure" : "Bản đề xuất"}</h3><div className="correction-text">{pieces}{correction.correctedText.slice(end)}</div></section>
     </div>
     <label htmlFor="review-edit">Chỉnh nội dung sẽ đọc</label>
-    <textarea id="review-edit" value={edited} onChange={(event) => setEdited(event.target.value)} maxLength={MAX_CHARS} rows={5} />
+    <textarea id="review-edit" value={edited} onChange={(event) => setEdited(event.target.value)} maxLength={limit} rows={5} />
+    {error && <p role="alert" className="inline-error">{error}</p>}
     <div className="modal-actions">
       {!translation && <Button className="secondary-button" onClick={() => onChoose(correction.originalText)}>Giữ bản gốc</Button>}
       <Button className={translation ? "secondary-button" : "primary-button"} onClick={() => onChoose(correction.correctedText)}>{translation ? "Dùng bản dịch" : "Dùng bản sửa"}</Button>

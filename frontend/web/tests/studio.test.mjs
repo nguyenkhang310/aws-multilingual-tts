@@ -322,6 +322,32 @@ test("Luồng tạo giọng và dữ liệu đến không đúng thứ tự", as
       assert.equal(studio.review.partIndex, 1);
       assert.equal(submitted.length, 1);
     });
+    await suite.test('thử lại sau lỗi tạo giọng giữ bản dịch tự chỉnh và không dịch lại', async () => {
+      await mount('Xin chào.', 'en-US');
+      let calls = 0;
+      api.previewTranslation = async () => { calls++; return { sourceLang: 'vi-VN', targetLang: 'en-US', translatedText: 'Hello.' }; };
+      api.synthesize = async () => { throw new Error('Dịch vụ tạo giọng đang bận'); };
+      await act(async () => { await studio.generate(); });
+      await act(async () => { await studio.resolveReview('Hello, teacher.'); });
+      assert.match(studio.error, /đang bận/);
+      await act(async () => { await studio.generate(); });
+      assert.equal(studio.review.correction.correctedText, 'Hello, teacher.');
+      assert.equal(calls, 1);
+      assert.equal(studio.text, 'Xin chào.');
+    });
+    await suite.test('lỗi preview đến muộn không ghi đè lỗi của bản nháp mới', async () => {
+      await mount('Xin chào.', 'en-US');
+      let reject;
+      api.previewTranslation = () => new Promise((_, fail) => { reject = fail; });
+      let pending;
+      await act(async () => { pending = studio.generate(); await settle(); });
+      await act(() => studio.updateText('Nội dung mới.'));
+      await act(async () => { reject(new Error('Lỗi cũ')); await pending; });
+      assert.equal(studio.text, 'Nội dung mới.');
+      assert.equal(studio.error, '');
+      assert.equal(studio.review, null);
+      assert.equal(studio.busy, false);
+    });
   } finally { await act(() => env.root.unmount()); await env.close(); }
 });
 

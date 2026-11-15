@@ -339,11 +339,12 @@ export function useEditor(
       }
       if (!mounted.current || currentRevision !== revision.current) return;
       const input = { ...source, text: translated, lang: translateTo!, translateTo: null };
+      const approval = approvalKey(index, source.text);
       const correction: TextCorrection = { status: 'checked', language: translateTo!, hasTypos: false,
-        originalText: source.text, correctedText: translated, changes: [] };
-      const pending = { input, correction, documentText: text, partIndex: index, partLimit, translation: true, approvalKey: approvalKey(index, source.text) };
+        originalText: source.text, correctedText: approved.current.get(approval)?.text ?? translated, changes: [] };
+      const pending = { input, correction, documentText: text, partIndex: index, partLimit, translation: true, approvalKey: approval };
       reviewRef.current = pending; setReview(pending);
-    } catch (reason) { if (mounted.current) setError((reason as Error).message); }
+    } catch (reason) { if (mounted.current && currentRevision === revision.current) setError((reason as Error).message); }
     finally { submitLock.current = false; if (mounted.current) setBusy(false); }
   }
 
@@ -361,7 +362,8 @@ export function useEditor(
     if (!pending.translation && !translateTo && selected !== pending.input.text) {
       const next = splitDocument(pending.documentText, pending.partLimit);
       next[pending.partIndex] = selected;
-      updateText(next.join(''));
+      try { updateText(checkedDocument(next.join(''))); }
+      catch (reason) { reviewRef.current = pending; setReview(pending); setError((reason as Error).message); return; }
     }
     return runSynthesis({ ...pending.input, text: selected }, !!pending.translation, pending.partIndex, pending.approvalKey);
   }

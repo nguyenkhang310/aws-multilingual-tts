@@ -84,6 +84,10 @@ Thực hiện theo gate trong AGENTS. Các kiểm thử AWS/provider, deploy và
 - **Cách làm:** Cho nhập tài liệu ngay ở màn Dịch và đọc, preview Azure từng phần, hiển thị bản gốc/bản dịch, cho chỉnh và xác nhận trước khi tạo MP3; gửi text đã duyệt bằng ngôn ngữ đích, không `translateTo`. Gemini `/text/translate` vẫn độc lập, không hiện trong màn này. Key provider không vào bundle.
 - **Nghiệm thu:** Dịch không tự tạo job TTS; người dùng kiểm bản dịch trước khi chọn giọng; bản gốc và phần đã dịch không mất khi request lỗi. **Trạng thái:** Coded + locally tested bằng mock; M4 cần review và thử trên thiết bị/backend thật.
 
+Web/app đã ghép bản duyệt Azure, gợi ý chính tả và cường độ sắc thái từ nhánh M5. Trong **Dịch và đọc**, bấm **Xem bản dịch**, chỉnh nội dung rồi xác nhận; sau bước chính tả mới gửi đoạn đã chọn để tạo MP3. Hủy giữ bản gốc; lỗi tạo giọng giữ bản dịch tự chỉnh để thử lại trong phiên. Tạo giọng đọc có công tắc kiểm chính tả mặc định tắt; bật thì có thể bỏ qua lúc chờ hoặc duyệt gốc/đề xuất/tự chỉnh. Sắc thái có thanh cường độ khi catalog hỗ trợ, không hiện cho giọng trung tính.
+
+App gom hai màn duyệt vào `app/src/components/TextReview.tsx`; màn hẹp/chữ lớn xếp theo cột và lỗi nằm ngay dưới ô nhập. Tài liệu nhiều phần: dịch hoặc bật chính tả thì **Duyệt phần kế tiếp**; đọc trực tiếp thì **Tạo các phần còn lại**, có nút dừng sau phần đang xử lý. Phần thành công không được gửi lại trong cùng phiên; reload cần đối chiếu lịch sử. Kiểm thử browser/export đã ghi ở CHANGELOG, vẫn cần nghiệm thu bàn phím/âm thanh trên thiết bị native thật và backend AWS.
+
 ## Kiểm tra local
 
 Cả hai giao diện có thể dùng API Python local trước, rồi chuyển sang cùng stack AWS. Cấu hình dịch vụ và CloudFront: [hướng dẫn cả nhóm](../docs/AZURE-SPEECH.md). Local: key nằm trong env Python; Sandbox: key nằm trong AWS SSM. Frontend chỉ có API base; mã demo nhập trong Cài đặt khi chạy.

@@ -61,3 +61,7 @@ export class SubmissionLedger {
     });
   }
 }
+const rejectedCodes = new Set(['TOO_MANY_REQUESTS', 'INVALID_INPUT', 'LANG_REQUIRED', 'LANG_NOT_SUPPORTED', 'TEXT_TOO_LONG',
+  'INVALID_PROVIDER', 'GEMINI_TTS_NOT_CONFIGURED', 'UNSUPPORTED_SPEED', 'UNSUPPORTED_STYLE', 'UNSUPPORTED_STYLE_INTENSITY',
+  'EMOTION_NOT_CONFIGURED', 'FEATURE_NOT_ENABLED', 'TRANSLATION_NOT_CONFIGURED']);
+export const isSubmissionRejected = (code: string) => rejectedCodes.has(code);

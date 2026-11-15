@@ -1,7 +1,7 @@
 import { catalogLanguages } from '../../../shared/voices';
 import { demoLanguages, MAX_CHARS, readStored, storeValue } from "./data";
 import type { HistoryItem, HistoryResponse, Job, Language, SynthesizeInput, Stats, TextCorrection, Translation } from "./types";
-import { SubmissionLedger } from '../../../shared/submissions';
+import { SubmissionLedger, isSubmissionRejected } from '../../../shared/submissions';
 import { checkedRecognition, type DocumentPage, type DocumentResult } from '../../../shared/vision';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
@@ -230,7 +230,7 @@ export const api = {
         if (result.status === 'DONE' || result.status === 'FAILED') await submissions.finish(result.jobId);
         return result;
       } catch (error) {
-        if (error instanceof ApiError && ['TOO_MANY_REQUESTS', 'INVALID_INPUT', 'LANG_REQUIRED', 'LANG_NOT_SUPPORTED', 'TEXT_TOO_LONG', 'INVALID_PROVIDER', 'GEMINI_TTS_NOT_CONFIGURED', 'UNSUPPORTED_SPEED', 'UNSUPPORTED_STYLE', 'EMOTION_NOT_CONFIGURED', 'FEATURE_NOT_ENABLED', 'TRANSLATION_NOT_CONFIGURED'].includes(error.code)) await submissions.reject(digest);
+        if (error instanceof ApiError && isSubmissionRejected(error.code)) await submissions.reject(digest);
         throw error;
       }
     }

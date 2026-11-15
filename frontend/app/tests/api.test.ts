@@ -127,3 +127,17 @@ test('Gemini gửi provider và sắc thái; lỗi cấu hình trả ledger về
   assert.equal(JSON.parse(calls[0].body).style, 'cheerful');
   assert.notEqual(calls[0].key, calls[1].key);
 });
+
+test('Lỗi cường độ bị từ chối trước job không giữ mã yêu cầu cũ', async () => {
+  const keys: string[] = [];
+  configureSubmissionStore({}, async () => {});
+  globalThis.fetch = async (_, init) => {
+    keys.push((init?.headers as Record<string, string>)['Idempotency-Key']);
+    return new Response(JSON.stringify(keys.length === 1 ? { error: { code: 'UNSUPPORTED_STYLE_INTENSITY', message: 'Kiểm tra cường độ.' } }
+      : { jobId: 'new-intensity', status: 'PENDING', audioUrl: null }), { status: keys.length === 1 ? 400 : 202 });
+  };
+  const input = { text: 'Bản thử.', lang: 'en-US', voice: 'Jenny', style: 'cheerful', styleIntensity: 1.6, speed: 1, translateTo: null };
+  await assert.rejects(api.synthesize(input), /cường độ/);
+  await api.synthesize(input);
+  assert.notEqual(keys[0], keys[1]);
+});

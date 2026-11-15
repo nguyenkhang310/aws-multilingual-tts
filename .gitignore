@@ -44,3 +44,5 @@ frontend/web/public/ocr/
 frontend/web/public/pdf/
 frontend/app/public/ocr/
 frontend/app/public/pdf/
+
+story/

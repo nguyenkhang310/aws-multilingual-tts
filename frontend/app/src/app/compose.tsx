@@ -4,7 +4,6 @@ import Slider from '@react-native-community/slider';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
 import { Action, Circle, Glass, Icon, Label } from '../components/ui';
@@ -21,29 +20,16 @@ import { DOCUMENT_MODES, type DocumentMode } from '../../../shared/vision';
 import { useStudio } from '../state/Studio';
 import { usePlayback } from '../state/Playback';
 import { api, DEMO } from '../lib/api';
+import { shrinkImage } from '../lib/image';
 import { base64Bytes, checkedText, extractDocument, MAX_FILE_BYTES } from '../lib/document';
 import { DEFAULT_SPEED, languageNames, MAX_CHARS, MAX_SPEED, MIN_SPEED, number, samples, validate, type Correction, type EditorMode, type Input, type Recording } from '../lib/model';
 import { checkedDocument, MAX_DOCUMENT_CHARS, OCR_LANGUAGES, splitDocument, wordCount } from '../../../shared/documents';
 import { expressionHint, expressionOptions } from '../../../shared/expression';
 import { markTtsDone, ttsNow, ttsTiming } from '../../../shared/tts-performance';
-import { skippableCorrection } from '../../../shared/correction-check';
+import { correctionNotice as correctionFailureNotice, skippableCorrection } from '../../../shared/correction-check';
+import { detectLanguage, type LanguageDetection } from '../lib/language-detection';
 
 const IMAGE_FILE = /\.(jpg|jpeg|png|webp)$/i;
-/** Giữ chi tiết dấu tiếng Việt nhưng chặn kích thước ảnh truyền sang WebView. */
-async function shrinkImage(uri: string) {
-  const original = await ImageManipulator.manipulate(uri).renderAsync();
-  const ratio = Math.min(1, 2400 / Math.max(original.width, original.height), Math.sqrt(4_000_000 / (original.width * original.height)));
-  let image = original;
-  try {
-    if (ratio < 1) image = await ImageManipulator.manipulate(original).resize({ width: Math.round(original.width * ratio), height: Math.round(original.height * ratio) }).renderAsync();
-    const { base64 } = await image.saveAsync({ base64: true, compress: 0.95, format: SaveFormat.JPEG });
-    if (!base64) throw new Error('Không đọc được ảnh. Hãy thử lại.');
-    return base64;
-  } finally {
-    if (image !== original) image.release();
-    original.release();
-  }
-}
 function deviceRecording(input: Input): Recording {
   return { ...input, jobId: `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     status: 'DONE', audioUrl: null, charCount: input.text.length, createdAt: new Date().toISOString(), local: true };
@@ -72,11 +58,15 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const [importWarning, setImportWarning] = useState('');
   const [viewportHeight, setViewportHeight] = useState(usableHeight);
   const [selectedTarget, setTarget] = useState('en-US');
-  const target = languages.some(l => l.lang === selectedTarget) ? selectedTarget : languages.find(l => l.lang !== lang)?.lang ?? lang;
+  const target = languages.some(l => l.lang === selectedTarget) || !languages.length
+    ? selectedTarget : languages.find(l => l.lang !== lang)?.lang ?? selectedTarget;
   const [targetVoice, setTargetVoice] = useState('Joanna');
   const [selectedStyle, setStyle] = useState('neutral');
   const [styleIntensity, setStyleIntensity] = useState(1);
   const [checkSpelling, setCheckSpelling] = useState(false);
+  const [autoLanguage, setAutoLanguage] = useState(true);
+  const [languageDetection, setLanguageDetection] = useState<LanguageDetection | null>(null);
+  const [detectedDraft, setDetectedDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [stage, setStage] = useState('');
@@ -104,6 +94,10 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const token = useRef(0);
   const translationDecisionLock = useRef(false);
   const locked = useRef(false);
+  const languageLock = useRef(false);
+  const languageChoiceRevision = useRef(0);
+  const providerRef = useRef(studio.provider);
+  useLayoutEffect(() => { providerRef.current = studio.provider; }, [studio.provider]);
   const submitting = useRef(false);
   const pendingInput = useRef<{ input: Input; document: string; index: number; limit: number; approvalKey?: string } | null>(null);
   const checkedTexts = useRef(new Set<string>());
@@ -115,15 +109,49 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const draftRef = useRef(draft);
   useLayoutEffect(() => { draftRef.current = draft; }, [draft]);
   const title = mode === 'translation' ? 'Dịch và đọc' : 'Tạo giọng đọc';
+  useEffect(() => {
+    if (!autoLanguage || !draft.trim()) return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      let found: LanguageDetection;
+      try { found = await detectLanguage(draft); } catch { return; }
+      if (!active) return;
+      setDetectedDraft(draft);
+      setLanguageDetection(found);
+      if (found.status !== 'detected' || !found.language || found.language === lang) return;
+      const next = languages.find(item => item.lang === found.language && item.voices.length);
+      if (next) selectVoice(found.language, next.voices.some(item => item.id === voice) ? voice : next.voices[0].id);
+    }, 320);
+    return () => { active = false; clearTimeout(timer); };
+  }, [draft, autoLanguage, languages, lang, voice, selectVoice]);
   useEffect(() => () => { token.current++; correctionWait.current?.abort(); importRevision.current++; if (pdfTimer.current) clearTimeout(pdfTimer.current); }, []);
   const selectedTargetVoice = languages.find(l => l.lang === target)?.voices.find(v => v.id === targetVoice)?.id ?? languages.find(l => l.lang === target)?.voices[0]?.id ?? '';
+  const readyLanguage = async (): Promise<string | null> => {
+    if (!autoLanguage) return lang;
+    let found: LanguageDetection;
+    try { found = await detectLanguage(draft); }
+    catch { setError('Chưa tải được bộ nhận diện. Hãy chọn ngôn ngữ thủ công.'); return null; }
+    setDetectedDraft(draft);
+    setLanguageDetection(found);
+    if (found.status !== 'detected' || !found.language) {
+      setError('Chưa xác định rõ ngôn ngữ. Hãy chọn thủ công.'); return null;
+    }
+    const next = languages.find(item => item.lang === found.language && item.voices.length);
+    if (!next) {
+      setError('Nguồn giọng hiện tại chưa hỗ trợ ngôn ngữ dự đoán. Hãy chọn thủ công.'); return null;
+    }
+    if (found.language !== lang) {
+      selectVoice(found.language, next.voices.some(item => item.id === voice) ? voice : next.voices[0].id);
+    }
+    return found.language;
+  };
   const voiceLanguage = languages.find(l => l.lang === (mode === 'translation' ? target : lang));
   const availableVoice = voiceLanguage?.voices.find(v => v.id === (mode === 'translation' ? selectedTargetVoice : voice));
   const styleOptions = expressionOptions(availableVoice?.styles, voiceLanguage?.autoEmotionEnabled);
   const style = styleOptions.some(item => item.value === selectedStyle) ? selectedStyle : 'neutral';
   const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(voiceLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {}) };
-  const previewKey = (index: number, source: string) => JSON.stringify([index, source, lang, target]);
-  const approvalKey = (index: number, source: string) => JSON.stringify([previewKey(index, source), selectedTargetVoice, speed, expression]);
+  const previewKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([index, source, sourceLang, target]);
+  const approvalKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([previewKey(index, source, sourceLang), selectedTargetVoice, speed, expression]);
   const finish = () => { locked.current = false; submitting.current = false; setBusy(false); setChecking(false); setStage(''); };
   const submit = async (input: Input, id: number, batchMode = false, index = selectedPart) => {
     if (submitting.current) return;
@@ -183,11 +211,12 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
       const correctionStarted = ttsNow();
       let correction: Correction | null = null;
       try { correction = await waiting.result; }
-      catch { if (id === token.current) setNotice('Chưa kiểm tra được chính tả bằng Gemini. Sẽ dùng nội dung đã chọn.'); }
+      catch { checkedTexts.current.add(correctionKey); if (id === token.current) setNotice(correctionFailureNotice()); }
       finally { correctionWait.current = null; if (id === token.current) setChecking(false); ttsTiming('correction_api', correctionStarted, voiceLanguage?.provider ?? '', correction?.status ?? 'SKIPPED'); }
       if (id !== token.current) return;
       if (draftRef.current !== draft) { finish(); return; }
-      if (correction?.status === 'skipped') setNotice('Gemini chưa kiểm tra chính tả. Sẽ dùng nội dung đã chọn.');
+      if (correction?.status === 'skipped') { checkedTexts.current.add(correctionKey); setNotice(correctionFailureNotice(correction.reason)); }
+      else if (correction?.status === 'checked' && !correction.hasTypos) setNotice('Gemini không phát hiện lỗi đánh máy.');
       if (correction?.status === 'checked' && correction.hasTypos && correction.correctedText !== input.text) {
         pendingInput.current = { input, document: draft, index, limit: partLimit, approvalKey: key };
         setReview(correction); setStage(''); return;
@@ -199,13 +228,27 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const generate = async (index = selectedPart) => {
     const preprocessingStarted = ttsNow();
     if (voiceLanguage?.available === false) { setError('Chưa bật Gemini TTS ở máy chủ.'); return; }
-    if (locked.current || importLock.current) return;
+    if (locked.current || languageLock.current || importLock.current) return;
+    const currentDraft = draft;
+    const currentChoice = languageChoiceRevision.current;
+    const currentProvider = studio.provider;
+    languageLock.current = true;
+    let sourceLang: string | null;
+    try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
+    if (!sourceLang || draftRef.current !== currentDraft || currentChoice !== languageChoiceRevision.current || currentProvider !== providerRef.current) return;
+    if (mode === 'translation' && sourceLang === target) { setError('Hãy chọn ngôn ngữ đích khác với ngôn ngữ gốc.'); return; }
     if (mode === 'translation' && languages.find(item => item.lang === target)?.translationEnabled === false) {
       setError('Chưa cấu hình Azure Translator.'); return;
     }
-    if (!availableVoice || loadingVoices) { setError('Hãy chờ tải xong và chọn một giọng đọc.'); return; }
+    const activeLanguage = languages.find(item => item.lang === (mode === 'translation' ? target : sourceLang));
+    const activeVoice = mode === 'translation' ? selectedTargetVoice
+      : activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
+    if (!activeVoice || loadingVoices) { setError('Hãy chờ tải xong và chọn một giọng đọc.'); return; }
     try { checkedDocument(draft); } catch (reason) { setError((reason as Error).message); return; }
-    const input: Input = { text: parts[index] ?? '', lang, voice: mode === 'translation' ? selectedTargetVoice : voice, speed, translateTo: mode === 'translation' ? target : null, ...expression };
+    const activeParts = splitDocument(draft, activeLanguage?.maxChars ?? MAX_CHARS);
+    const activeExpression = activeVoice === (mode === 'translation' ? selectedTargetVoice : voice)
+      ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
+    const input: Input = { text: activeParts[index] ?? '', lang: sourceLang, voice: activeVoice, speed, translateTo: mode === 'translation' ? target : null, ...activeExpression };
     const invalid = validate(input);
     if (invalid) { setError(invalid); return; }
     ttsTiming('frontend_preprocessing', preprocessingStarted, voiceLanguage?.provider ?? '', 'READY');
@@ -213,13 +256,13 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
     const id = ++token.current;
     if (mode === 'translation') {
       setStage('Đang dịch bằng Azure…');
-      const key = previewKey(index, input.text);
+      const key = previewKey(index, input.text, sourceLang);
       try {
         let translated = previews.current.get(key);
-        if (!translated) { translated = (await api.previewTranslation(input.text, lang, target)).translatedText; previews.current.set(key, translated); }
+        if (!translated) { translated = (await api.previewTranslation(input.text, sourceLang, target)).translatedText; previews.current.set(key, translated); }
         if (id !== token.current || draftRef.current !== draft) { finish(); return; }
         translationDecisionLock.current = false;
-        const approval = approvalKey(index, input.text);
+        const approval = approvalKey(index, input.text, sourceLang);
         setTranslationReview({ source: input.text, translated: approved.current.get(approval)?.text ?? translated,
           input: { ...input, text: translated, lang: target, translateTo: null }, document: draft, index, approvalKey: approval });
         setStage(''); return;
@@ -229,10 +272,23 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   };
   const generateAll = async () => {
     if (voiceLanguage?.available === false) { setError('Chưa bật Gemini TTS ở máy chủ.'); return; }
-    if (locked.current || importLock.current || !availableVoice || loadingVoices) return;
+    if (locked.current || languageLock.current || importLock.current || !availableVoice || loadingVoices) return;
     try { checkedDocument(draft); } catch (reason) { setError((reason as Error).message); return; }
+    const currentDraft = draft;
+    const currentChoice = languageChoiceRevision.current;
+    const currentProvider = studio.provider;
+    languageLock.current = true;
+    let sourceLang: string | null;
+    try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
+    if (!sourceLang || draftRef.current !== currentDraft || currentChoice !== languageChoiceRevision.current || currentProvider !== providerRef.current) return;
+    const activeLanguage = languages.find(item => item.lang === (mode === 'translation' ? target : sourceLang));
+    const activeParts = splitDocument(draft, activeLanguage?.maxChars ?? MAX_CHARS);
+    const activeVoice = mode === 'translation' ? selectedTargetVoice
+      : activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
+    const activeExpression = activeVoice === (mode === 'translation' ? selectedTargetVoice : voice)
+      ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
     if (mode === 'speech' && !checkSpelling) {
-      const inputs = parts.map((text, index) => ({ index, input: { text, lang, voice, speed, translateTo: null, ...expression } })).filter(({ input }) => input.text.trim());
+      const inputs = activeParts.map((text, index) => ({ index, input: { text, lang: sourceLang, voice: activeVoice, speed, translateTo: null, ...activeExpression } })).filter(({ input }) => input.text.trim());
       const invalid = inputs.map(({ input }) => validate(input)).find(Boolean);
       if (invalid) { setError(invalid); return; }
       locked.current = true; stopBatch.current = false; setBusy(true); setError(''); Keyboard.dismiss(); stop();
@@ -250,11 +306,11 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
       } finally { if (id === token.current) { finish(); setBatchProgress(''); } }
       return;
     }
-    const next = parts.findIndex((part, index) => {
+    const next = activeParts.findIndex((part, index) => {
       if (!part.trim()) return false;
       const input: Input = mode === 'translation'
-        ? approved.current.get(approvalKey(index, part)) ?? { text: part, lang, voice: selectedTargetVoice, speed, translateTo: target, ...expression }
-        : { text: part, lang, voice, speed, translateTo: null, ...expression };
+        ? approved.current.get(approvalKey(index, part, sourceLang)) ?? { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo: target, ...activeExpression }
+        : { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo: null, ...activeExpression };
       return !completed.current.has(JSON.stringify([index, input]));
     });
     if (next < 0) { setNotice('Đã tạo xong tất cả các phần.'); return; }
@@ -361,8 +417,21 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
         right={keyboard.visible ? <Circle name="keyboard" label="Ẩn bàn phím" onPress={Keyboard.dismiss} /> : undefined} />
       <PageScroll onLayout={event => setViewportHeight(event.nativeEvent.layout.height)} contentContainerStyle={{ flexGrow: 1, gap: 12 }}>
         {!keyboard.visible && <ProviderPicker disabled={busy || importing} />}
+        {mode === 'speech' && <Action disabled={busy || importing} onPress={() => setSheet('source')}>
+          {autoLanguage ? `Tự nhận diện · ${languageNames[lang] ?? lang}` : `Ngôn ngữ · ${languageNames[lang] ?? lang}`}
+        </Action>}
+        {mode === 'speech' && autoLanguage && !!draft.trim() && detectedDraft === draft && <Label size={12} muted>{languageDetection?.status === 'detected'
+          ? languages.some(item => item.lang === languageDetection.language && item.voices.length)
+            ? `Đã nhận diện: ${languageNames[languageDetection.language || ''] ?? languageDetection.language}`
+            : 'Ngôn ngữ dự đoán chưa có giọng ở nguồn hiện tại. Hãy chọn thủ công.'
+          : languageDetection?.status === 'mixed' ? 'Nhiều ngôn ngữ; hãy chọn thủ công.'
+          : languageDetection?.status === 'uncertain' && draft.trim().length >= 12 ? 'Chưa xác định rõ ngôn ngữ' : ''}</Label>}
         {mode === 'translation' && <View style={styles.translation}>
-          <Pressable accessibilityRole="button" onPress={() => setSheet('source')} disabled={busy} style={[styles.language, { backgroundColor: colors.raised }]}><Label size={12} muted>Từ</Label><Label weight="600">{languageNames[lang]}</Label></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ngôn ngữ gốc" onPress={() => setSheet('source')} disabled={busy} style={[styles.language, { backgroundColor: colors.raised }]}>
+            <Label size={12} muted>Từ</Label><Label weight="600">{autoLanguage
+              ? detectedDraft === draft && languageDetection?.status === 'detected' ? `Tự nhận diện · ${languageNames[lang] ?? lang}` : 'Tự nhận diện'
+              : languageNames[lang] ?? lang}</Label>
+          </Pressable>
           <Icon name="arrow" color={colors.secondary} />
           <Pressable accessibilityRole="button" onPress={() => setSheet('target')} disabled={busy} style={[styles.language, { backgroundColor: colors.raised }]}><Label size={12} muted>Sang</Label><Label weight="600">{languageNames[target]}</Label></Pressable>
         </View>}
@@ -431,7 +500,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
     }} />}
     <Sheet title="Chọn giọng đọc" visible={sheet === 'voices'} close={() => setSheet(null)}>
       <VoiceList showProvider={false} onlyLanguage={mode === 'translation' ? target : undefined} selected={mode === 'translation' ? { lang: target, voice: selectedTargetVoice } : undefined}
-        onSelect={(_, id) => { if (mode === 'translation') setTargetVoice(id); setSheet(null); }} />
+        onSelect={(_, id) => { if (mode === 'translation') setTargetVoice(id); else { languageChoiceRevision.current++; setAutoLanguage(false); } setSheet(null); }} />
     </Sheet>
     <Sheet title="Cài đặt giọng đọc" visible={sheet === 'settings'} close={() => setSheet(null)}>
       {mode === 'speech' && <Pressable accessibilityRole="switch" accessibilityLabel="Kiểm tra chính tả bằng AI"
@@ -465,8 +534,10 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
       <Action onPress={() => { setSpeed(DEFAULT_SPEED); setStyle('neutral'); setStyleIntensity(1); }}>Đặt lại</Action>
     </Sheet>
     <Sheet title={sheet === 'source' ? 'Ngôn ngữ gốc' : 'Dịch sang'} visible={sheet === 'source' || sheet === 'target'} close={() => setSheet(null)}>
+      {sheet === 'source' && <Action onPress={() => { languageChoiceRevision.current++; setAutoLanguage(true); setSheet(null); }}>Tự nhận diện</Action>}
       {languages.filter(l => l.voices.length).map(l => <Action key={l.lang} onPress={() => {
-        if (sheet === 'source') selectVoice(l.lang, l.voices[0].id); else { setTarget(l.lang); setTargetVoice(l.voices[0].id); }
+        if (sheet === 'source') { languageChoiceRevision.current++; setAutoLanguage(false); setLanguageDetection(null); selectVoice(l.lang, l.voices[0].id); }
+        else { setTarget(l.lang); setTargetVoice(l.voices[0].id); }
         setSheet(null);
       }}>{languageNames[l.lang] ?? l.lang}</Action>)}
     </Sheet>

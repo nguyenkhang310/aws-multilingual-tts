@@ -15,6 +15,12 @@ def body_limit(path, method):
     return DOCUMENT_BODY_BYTES if method == "POST" and path.rstrip("/") == "/documents/recognize" else MAX_BODY_BYTES
 
 
+def body_error(path):
+    if path.startswith("/audiobooks"):
+        return error_response(413, "PAYLOAD_TOO_LARGE", "Phần tải lên vượt giới hạn cho phép.")
+    return error_response(400, "TEXT_TOO_LONG", "Kích thước yêu cầu vượt quá giới hạn cho phép.")
+
+
 SUBMIT_FUNCTION_NAME = os.environ.get("SUBMIT_FUNCTION_NAME", "tts-submit-dev")
 VOICES_FUNCTION_NAME = os.environ.get("VOICES_FUNCTION_NAME", "tts-voices-dev")
 HISTORY_FUNCTION_NAME = os.environ.get("HISTORY_FUNCTION_NAME", "tts-history-dev")
@@ -39,6 +45,38 @@ ROUTE_PATTERNS = [
         (r"^/stats$", "GET", STATS_FUNCTION_NAME, "stats"),
     ]
 ]
+for story_path, methods in (
+    (r"^/audiobooks$", ("GET", "POST")),
+    (r"^/audiobooks/[a-f0-9]{32}$", ("GET", "PATCH", "DELETE")),
+    (r"^/audiobooks/[a-f0-9]{32}/cover-upload$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/cover$", ("GET", "POST", "DELETE")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters$", ("GET", "POST")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}$", ("GET", "PATCH", "DELETE")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/segments$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/source$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/uploads$", ("PUT",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/commit$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans$", ("GET", "POST")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/start$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/tick$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/pause$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/resume$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/segments/[a-f0-9]{32}/retry$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-progress$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/glossary$", ("GET", "PUT")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans$", ("GET", "POST")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/(start|tick|pause|resume|approve)$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/progress$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/chunks/[0-9]{1,4}$", ("GET", "PUT")),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/chunks/[0-9]{1,4}/retry$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/approved-translation(?:/[0-9]{1,4})?$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/approved-translation/import/[a-f0-9]{32}/[0-9]{1,4}$", ("PUT",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/approved-translation/import/[a-f0-9]{32}/commit$", ("POST",)),
+):
+    ROUTE_PATTERNS.append({"pattern": re.compile(story_path), "allowed_methods": methods,
+                           "target_function": SUBMIT_FUNCTION_NAME, "name": "audiobooks"})
 
 
 def log_json(**fields):
@@ -56,7 +94,7 @@ def get_cors_headers():
     return {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": allowed_origin,
-        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, X-Demo-Token, Idempotency-Key, x-amz-content-sha256",
         "Access-Control-Max-Age": "86400",
         "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -162,13 +200,13 @@ def handler(event, context):
         raw_body_len = len(raw_body.encode("utf-8"))
         if raw_body_len > (limit * 4 // 3 + 4 if event.get("isBase64Encoded", False) else limit):
             log_json(event="body_too_large", size=raw_body_len, limit=limit)
-            return error_response(400, "TEXT_TOO_LONG", "Kích thước yêu cầu vượt quá giới hạn cho phép.")
+            return body_error(path)
 
         if event.get("isBase64Encoded", False):
             try:
                 decoded_bytes = base64.b64decode(raw_body, validate=True)
                 if len(decoded_bytes) > limit:
-                    return error_response(400, "TEXT_TOO_LONG", "Kích thước yêu cầu vượt quá giới hạn cho phép.")
+                    return body_error(path)
                 body_str = decoded_bytes.decode("utf-8")
             except (ValueError, UnicodeDecodeError):
                 return error_response(400, "INVALID_INPUT", "Nội dung base64 hoặc UTF-8 không hợp lệ.")

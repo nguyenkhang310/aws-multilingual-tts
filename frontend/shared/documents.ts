@@ -15,12 +15,14 @@ export function wordCount(text: string): number {
   return text.match(/\S+/gu)?.length ?? 0;
 }
 
-export function checkedDocument(text: string): string {
+export function checkedDocument(text: string, maxChars = MAX_DOCUMENT_CHARS): string {
   const value = text.replace(/^\uFEFF/, '').trim();
   if (!value) throw new Error('Tài liệu không có chữ đọc được. Hãy thử ảnh rõ hơn hoặc ngôn ngữ OCR phù hợp.');
   if (value.includes('\u0000')) throw new Error('Tệp không phải văn bản hợp lệ.');
-  if (value.length > MAX_DOCUMENT_CHARS || wordCount(value) > MAX_DOCUMENT_WORDS)
-    throw new Error('Tài liệu tối đa 200.000 ký tự và 50.000 từ. Hãy chia nhỏ tài liệu.');
+  if (value.length > maxChars || (maxChars === MAX_DOCUMENT_CHARS && wordCount(value) > MAX_DOCUMENT_WORDS))
+    throw new Error(maxChars === MAX_DOCUMENT_CHARS
+      ? 'Tài liệu tối đa 200.000 ký tự và 50.000 từ. Hãy chia nhỏ tài liệu.'
+      : `Tài liệu tối đa ${maxChars.toLocaleString('vi-VN')} ký tự. Hãy chia nhỏ tài liệu.`);
   return value;
 }
 

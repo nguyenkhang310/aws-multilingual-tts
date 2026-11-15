@@ -18,6 +18,30 @@ npm run dev
 
 Lệnh chỉ đọc env backend; truyền API base cho hai frontend trong phiên chạy, không sửa các file env đang có. Nếu catalog thiếu, khác vùng hoặc là bản cũ chưa có dữ liệu sắc thái và đã có Speech key, lệnh tự gọi Azure lấy catalog một lần trước khi mở ba dịch vụ; chưa tạo MP3. Những lần sau dùng lại catalog local. Không cần lệnh `voices` riêng trong cách chạy này. API mở trên mạng nội bộ để điện thoại truy cập; dùng mã demo riêng và mạng tin cậy.
 
+### Bảo đảm model tự nhận diện có trong clone mới
+
+Web và Expo dùng ELD 2.1.1 chạy offline trên thiết bị. Model nguồn là `eld@2.1.1`, file `node_modules/eld/src/ngrams/small.js` (1.600.055 byte). Gói được tải từ URL cố định trong lockfile và được lockfile kiểm SHA-512; `prepare` kiểm thêm SHA-256 của chính model bằng `frontend/scripts/verify-eld-model.mjs`. Model không phải file riêng trong Git và không tải từ CDN khi người dùng mở app.
+
+Sau khi clone, cài dependency đúng thư mục và kiểm model:
+
+```bash
+cd frontend/web
+npm ci
+npm run verify:language-model
+npm run build
+```
+
+Với Expo Go/native, từ gốc repo:
+
+```bash
+cd frontend/app
+npm ci
+npm run verify:language-model
+npx expo start
+```
+
+Nếu deploy web từ CloudShell, bước tương đương đã nằm trong script deploy: sau khi clone nhánh đã được nhóm chọn và stack có Outputs hosting, chạy `bash deployment/scripts/sandbox.sh web` tại gốc repo. Script chạy `npm ci`, production build, `aws s3 sync dist ...` và invalidation; không cần tải hay chép model thủ công. Web build đặt model tại `frontend/web/dist/assets/static.small-<hash>.js`; script đồng bộ cả thư mục nên CloudFront phục vụ chunk từ cùng S3 origin như website.
+
 Máy có nhiều mạng/VPN thì chỉ định đúng IP Wi-Fi của máy:
 
 ```bash
@@ -191,6 +215,8 @@ Khởi động lại Metro (`npm --prefix frontend/app start -- --clear`), quét
 Job/MP3/quota/idempotency local nằm trong RAM, **mất khi tắt API**; catalog và key env vẫn ở máy. Tránh tắt khi job đang xử lý rồi gửi lại liên tục. Key/quota Azure không reset theo runtime local.
 
 Local giữ bảy API nền, phần mở rộng `/text/translate` và `/documents/recognize` của M5; thêm `/health` và `/media/{id}` chỉ trong dev server. Link media được ký, có hạn và hỗ trợ HTTP Range để tua; không dùng presigned URL AWS giả. Worker chạy tuần tự, thử lại tối đa một lần; đây không phải mô phỏng đầy đủ Lambda/IAM/OAC hoặc bằng chứng AWS đã đạt.
+
+Ảnh bìa Audio Truyện trong local cũng ở Moto trong RAM. Dev server cấp URL upload/đọc local có chữ ký HMAC ngắn hạn thay cho URL S3, nên thử chọn/tải/đổi/xóa ảnh không gửi ảnh lên AWS. Local bridge kiểm token upload và giới hạn 5 MiB; API M3 vẫn kiểm lại bytes, MIME và pixel khi xác nhận. Dữ liệu/URL ảnh mất khi tắt server. Kiểm bằng `python -m unittest discover -s deployment/local -p 'test_*.py'` từ gốc repo với `.venv` đã cài requirements local.
 
 ```bash
 .venv/bin/python -m unittest discover -s backend/m1-minh-ly/tests

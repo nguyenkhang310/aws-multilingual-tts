@@ -51,6 +51,20 @@ Parameters:
     Type: Number
     Default: 30000
     MinValue: 1
+  StoryMaxActive:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 2
+  StoryMaxAttempts:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 3
+  StoryHeadlessEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
   StatsScanMaxJobs:
     Type: Number
     Default: 200
@@ -105,6 +119,11 @@ Parameters:
     Default: 100
     MinValue: 1
     MaxValue: 10000
+  StoryTranslationDailyChars:
+    Type: Number
+    Default: 100000
+    MinValue: 1000
+    MaxValue: 10000000
   TypoDailyCallLimit:
     Type: Number
     Default: 100
@@ -132,8 +151,8 @@ Resources:
         JobsBucket: !GetAtt Storage.Outputs.JobsBucketName
         JobsPrefix: !Ref JobsPrefix
         AudioBucket: !GetAtt Storage.Outputs.AudioBucketName
+        StoryCompletionFunctionName: !Sub "tts-submit-${Env}"
         TtsApiParameterName: !Ref TtsApiParameterName
-        GeminiTtsDailyCallLimit: !Ref GeminiTtsDailyCallLimit
         TtsProvider: !Ref TtsProvider
         AzureSpeechRegion: !Ref AzureSpeechRegion
         MaxChars: !Ref MaxChars
@@ -142,6 +161,7 @@ Resources:
 
         GeminiTtsEnabled: !Ref GeminiTtsEnabled
         GeminiTtsModel: !Ref GeminiTtsModel
+        GeminiTtsDailyCallLimit: !Ref GeminiTtsDailyCallLimit
         GeminiEmotionEnabled: !Ref GeminiEmotionEnabled
         GeminiApiParameterName: !Ref GeminiApiParameterName
         GeminiModel: !Ref GeminiModel
@@ -169,13 +189,18 @@ Resources:
         GeminiTypoEnabled: !Ref GeminiTypoEnabled
         GeminiTtsEnabled: !Ref GeminiTtsEnabled
         GeminiTtsModel: !Ref GeminiTtsModel
+        GeminiTtsDailyCallLimit: !Ref GeminiTtsDailyCallLimit
         GeminiEmotionEnabled: !Ref GeminiEmotionEnabled
         GeminiApiParameterName: !Ref GeminiApiParameterName
         GeminiModel: !Ref GeminiModel
         GeminiTranslationEnabled: !Ref GeminiTranslationEnabled
         TranslationDailyCallLimit: !Ref TranslationDailyCallLimit
+        StoryTranslationDailyChars: !Ref StoryTranslationDailyChars
         TypoDailyCallLimit: !Ref TypoDailyCallLimit
         DailyCharLimit: !Ref DailyCharLimit
+        StoryMaxActive: !Ref StoryMaxActive
+        StoryMaxAttempts: !Ref StoryMaxAttempts
+        StoryHeadlessEnabled: !Ref StoryHeadlessEnabled
         StatsScanMaxJobs: !Ref StatsScanMaxJobs
 
   Api:

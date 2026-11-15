@@ -1,10 +1,12 @@
 export const languageNames: Record<string, string> = {
+  "und": "Chưa xác định (chờ nhập chương)",
   "vi-VN": "Tiếng Việt",
   "en-US": "Tiếng Anh (Mỹ)",
   "en-GB": "Tiếng Anh (Anh)",
   "ja-JP": "Tiếng Nhật",
   "ko-KR": "Tiếng Hàn",
   "cmn-CN": "Tiếng Trung giản thể",
+  "zh-CN": "Tiếng Trung giản thể",
   "zh-TW": "Tiếng Trung phồn thể (Đài Loan)",
   "zh-HK": "Tiếng Quảng Đông (Hồng Kông)",
   "hi-IN": "Tiếng Hindi",

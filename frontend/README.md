@@ -1,5 +1,27 @@
 # M4 — Nguyên Khang: Frontend hiện có, CloudFront hosting và tái triển khai
 
+Web và Expo dùng chung API, catalog giọng và bản thu. Azure là nguồn mặc định; Gemini TTS là lựa chọn riêng có ngôn ngữ, giọng, sắc thái và cường độ theo catalog máy chủ. Mã truy cập nhập tại Cài đặt trên từng thiết bị; key provider luôn ở backend.
+
+**Audio Truyện** quản lý dự án, chương, bản dịch đã duyệt và kế hoạch audio theo revision. Web/app dùng chung `shared/story-client.ts` cho CRUD, upload từng phần, CAS, backup, dịch và batch; không có bản sao backend trong frontend. Tạo MP3 vẫn đi qua Submit M5 → worker M2 → S3 M3. Xem [hợp đồng Audio Truyện](../docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+
+| Chức năng | Web | Expo iOS/Android |
+|---|---|---|
+| Dự án/chương, ảnh bìa, tên riêng và thuật ngữ | Có | Có |
+| Nhập nội dung chương | Từng/nhiều tệp, tối đa 10 tệp/lần | Từng tệp TXT/MD/DOCX/PDF/ảnh, hoặc nhập tay |
+| Giới hạn | 50 MiB/tệp, 1.000.000 ký tự/chương | Cùng giới hạn; chia trang chỉnh sửa 30.000 ký tự |
+| Dịch và duyệt | Sửa từng phần, duyệt, dịch nhiều chương | Cùng API và bước duyệt; dừng khi ứng dụng ra nền |
+| Audio | Chọn nguồn/giọng/tốc độ/sắc thái, xác nhận, pause/resume/retry | Cùng API; nghe, tua và lưu/chia sẻ từng MP3 trong bảng phát |
+| Gộp MP3 đã hoàn tất | Tại trình duyệt, tối đa 60 phút | Chưa hỗ trợ gộp; từng đoạn vẫn nghe/chia sẻ được |
+| Backup JSON | Xuất/khôi phục | Xuất qua bảng chia sẻ hệ thống, khôi phục từ Files |
+
+App đặt **Nội dung / Bản dịch / Âm thanh** trong từng chương. Tạo truyện, thông tin, chọn giọng và thao tác nâng cao mở bằng sheet; web thu gọn các phần tương ứng. Có xác nhận bỏ nội dung chưa lưu. Không nhét cấu hình và mô tả dài vào màn chính; giữ kính, sắc thái sáng/tối và giảm chuyển động.
+
+Ảnh bìa JPEG/PNG tối đa 5 MiB tải trực tiếp qua ticket S3 private; API chỉ lưu metadata, URL xem có hạn và được làm mới một lần khi lỗi. Backup gồm nội dung, metadata và bản dịch đã duyệt, **không chứa MP3, ảnh bìa hoặc URL đã ký**. Local Moto mất dữ liệu khi dừng; Sandbox có thể xóa cuối phiên nên cần lưu backup. Callback STORY-01C đã có code và test giả lập, chưa xác minh destination trên AWS; mất callback vẫn cần đối soát/tick. Xem [batch](../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026) và [ảnh bìa](../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
+
+**Tự nhận diện ngôn ngữ** dùng ELD 2.1.1 tại thiết bị, mặc định bật ở phiên soạn mới. Model small được khóa hash bởi `frontend/scripts/verify-eld-model.mjs`, đóng gói cùng web/Expo, không dùng API/key. Kết quả chưa chắc cần chọn thủ công; không gửi `und` cho TTS. Truyện mới chọn Auto giữ `sourceLang=und`; web/app nhận diện chương đầu rồi yêu cầu người dùng xác nhận. Benchmark offline: `cd frontend/app && node --import tsx scripts/benchmark-language.mts`.
+
+PDF có lớp chữ đọc tại thiết bị; ảnh/trang scan chọn Gemini trực tuyến có bước xác nhận và duyệt chữ trước khi thay nội dung chương. Bộ đọc Expo dùng static reader đi cùng bản web; cần cập nhật web khi thay reader. Expo web dùng để kiểm tra giao diện: nhập PDF/ảnh và chia sẻ hệ thống vẫn cần kiểm trên iOS/Android thật.
+
 **Cập nhật 2026-11-09.** M4 có web/app, hosting CloudFront và log cập nhật một stack/web hiện có sang Azure Speech. M4 phụ trách tích hợp giao diện và hosting; adapter/worker TTS vẫn do M2 sở hữu. Màn dịch tài liệu mới đã có code local, cần M4 review và thử với backend/thiết bị thật. Kiểm lại khả năng tạo stack mới, OAC, app native và reset trước khi tick thêm task.
 
 **Cần chốt với giảng viên:** đề yêu cầu API Gateway/Polly/DynamoDB, còn bản Sandbox đang dùng dịch vụ thay thế. Xem [đối chiếu yêu cầu](../AGENTS.md#3-yêu-cầu-đề-bài-và-trạng-thái-phải-diễn-đạt-đúng); không tự đổi hạ tầng khi chưa có môi trường/quyền và phân công mới.
@@ -10,7 +32,7 @@ Nhận route/URL/policy từ M1, catalog/limits từ M2, jobs/history/cursor/pre
 
 | File/thư mục trong module | Làm việc gì |
 |---|---|
-| `web/src/components/` | Control, sidebar, modal và AudioPlayer dùng chung. |
+| `web/src/components/` | Control, sidebar, modal, AudioPlayer và player đoạn truyện. |
 | `web/src/hooks/` | Luồng studio, theme, sidebar motion và usePlayback. |
 | `web/src/lib/` | API, types, dữ liệu và đọc tài liệu. |
 | `web/src/views/` | Trang tổng quan; các màn khác hiện nằm trong App.tsx. |
@@ -112,6 +134,8 @@ npm run dev
 ```
 
 Web cần Node ≥20.19. `npm run build` tạo dist; `npm run test:ui` chạy kiểm thử local. Upload từ CloudShell bằng `bash deployment/scripts/sandbox.sh web` ở gốc repo, script tự lấy domain/bucket từ Outputs; không cần quy trình ZIP hosting riêng.
+
+Clone mới tự cài và kiểm chứng ELD trong `npm ci`; có thể kiểm lại rõ ràng trước build bằng `npm run verify:language-model`. Quy trình deploy web `sandbox.sh web` tự chạy `npm ci`, build rồi đồng bộ toàn bộ `dist/` lên S3, nên chunk model được tải lên cùng các asset khác. Chỉ cần chạy thử ứng dụng; không chép model thủ công.
 
 Vite đọc `VITE_API_BASE_URL` lúc khởi động dev server và lúc build. Đổi env cần mở lại dev server/build. **Dịch và đọc** dùng Azure Translator rồi nguồn TTS đã chọn; không có giao diện dịch văn bản bằng Gemini. Gemini TTS là lựa chọn tạo giọng riêng từ ngày 13/11/2026, độc lập OCR/dịch/typo; [cấu hình backend](../deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng).
 

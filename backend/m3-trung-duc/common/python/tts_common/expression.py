@@ -66,3 +66,18 @@ def reserve_analysis_call(limit, prefix="emotion-usage"):
             if error.response.get("Error", {}).get("Code") not in {"PreconditionFailed", "ConditionalRequestConflict"}:
                 raise
     return False
+
+
+def remaining_gemini_calls(limit):
+    """Display estimate only; the M2 provider still reserves each call with CAS."""
+    key = f"tts-gemini-usage/{time.strftime('%Y-%m-%d', time.gmtime())}.json"
+    client = aws.s3()
+    try:
+        response = client.get_object(Bucket=config.JOBS_BUCKET, Key=key)
+    except client.exceptions.NoSuchKey:
+        return limit
+    try:
+        used = json.loads(response["Body"].read())["calls"]
+    finally:
+        response["Body"].close()
+    return max(0, limit - used)

@@ -25,9 +25,9 @@ function xmlText(xml: string) {
     .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
 }
-export function extractDocument(bytes: Uint8Array, name: string) {
+export function extractDocument(bytes: Uint8Array, name: string, maxChars?: number) {
   if (bytes.length > MAX_FILE_BYTES) throw new Error('Tệp tối đa 50 MB.');
-  if (/\.(txt|md)$/i.test(name)) return checkedText(strFromU8(bytes).replace(/^\uFEFF/, ''));
+  if (/\.(txt|md)$/i.test(name)) return checkedDocument(strFromU8(bytes).replace(/^\uFEFF/, ''), maxChars);
   if (!/\.docx$/i.test(name)) throw new Error('Hãy chọn tệp PDF, DOCX hoặc TXT.');
   let xml: Uint8Array | undefined;
   try {
@@ -35,5 +35,5 @@ export function extractDocument(bytes: Uint8Array, name: string) {
     xml = archive['word/document.xml'];
   } catch { throw new Error('Tệp Word bị lỗi hoặc không đúng định dạng DOCX.'); }
   if (!xml) throw new Error('Không tìm thấy nội dung Word hoặc tài liệu quá lớn.');
-  return checkedText(xmlText(strFromU8(xml)));
+  return checkedDocument(xmlText(strFromU8(xml)), maxChars);
 }

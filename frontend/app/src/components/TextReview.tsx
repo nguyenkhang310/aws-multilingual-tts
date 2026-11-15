@@ -23,9 +23,11 @@ export default function TextReview({ original, suggested, translation = false, l
       keyboardAppearance={isDark ? 'dark' : 'light'} textAlignVertical="top" underlineColorAndroid="transparent" selectionColor={colors.blue}
       style={[styles.editor, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.line }]} />
     {!!error && <View accessibilityRole="alert"><Label size={14} style={{ color: colors.danger }}>{error}</Label></View>}
-    <Action primary disabled={!edited.trim()} onPress={() => onChoose(edited)}>{translation ? 'Xác nhận và tiếp tục' : 'Dùng nội dung này'}</Action>
-    {!translation && <><Action onPress={() => onChoose(suggested)}>Dùng bản đề xuất</Action>
-      <Action onPress={() => onChoose(original)}>Giữ bản gốc</Action></>}
+    {translation ? <Action primary disabled={!edited.trim()} onPress={() => onChoose(edited)}>Xác nhận và tiếp tục</Action> : <>
+      <Action onPress={() => onChoose(original)}>Giữ bản gốc</Action>
+      <Action primary={edited !== suggested} disabled={!edited.trim()} onPress={() => onChoose(edited)}>Dùng bản tự chỉnh</Action>
+      <Action primary={edited === suggested} onPress={() => onChoose(suggested)}>Dùng bản sửa</Action>
+    </>}
   </Sheet>;
 }
 const styles = StyleSheet.create({

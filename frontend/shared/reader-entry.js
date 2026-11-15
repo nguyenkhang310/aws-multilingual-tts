@@ -25,12 +25,12 @@ window.completeDocumentPage = (id, result, error) => {
   if (error) { const failure = new Error(error); failure.name = 'DocumentServiceError'; pending.reject(failure); }
   else { try { pending.resolve(checkedRecognition(result)); } catch (failure) { pending.reject(failure); } }
 };
-window.extractPdf = async (base64, kind = 'pdf', lang = 'vi-VN', scan = false, mode = 'device') => {
+window.extractPdf = async (base64, kind = 'pdf', lang = 'vi-VN', scan = false, mode = 'device', maxChars) => {
   if (running) return;
   running = true;
   let task;
   const progress = message => send({ progress: message });
-  const options = { lang, scan: mode === 'device' && scan, ocrBase: new URL('./', location.href).href,
+  const options = { maxChars: maxChars === 1_000_000 ? maxChars : undefined, lang, scan: mode === 'device' && scan, ocrBase: new URL('./', location.href).href,
     onProgress: progress, onWarning: message => { warning = [warning, message].filter(Boolean).join(' '); } };
   warning = '';
   const recognize = async canvas => {
@@ -101,6 +101,6 @@ window.extractPdf = async (base64, kind = 'pdf', lang = 'vi-VN', scan = false, m
 window.addEventListener('message', event => {
   if (event.source !== window.parent) return;
   if (event.data?.type === 'tts-page-result') window.completeDocumentPage(event.data.id, event.data.result, event.data.error);
-  if (event.data?.type === 'tts-read-pdf' && typeof event.data.base64 === 'string') void window.extractPdf(event.data.base64, event.data.kind, event.data.lang, event.data.scan, event.data.mode);
+  if (event.data?.type === 'tts-read-pdf' && typeof event.data.base64 === 'string') void window.extractPdf(event.data.base64, event.data.kind, event.data.lang, event.data.scan, event.data.mode, event.data.maxChars);
 });
 send({ ready: true, cloud: true });

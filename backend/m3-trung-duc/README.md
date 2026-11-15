@@ -13,6 +13,11 @@ Nhận quyền S3/role từ M1 và yêu cầu metadata/paging từ M2/M4/M5. Bà
 | `common/python/tts_common/` | Lambda Layer: S3 repository, schema, CAS/lease, audio/presign và registry. |
 | `history/` | GET /jobs/{id}, GET /history và DELETE /history/{id}. |
 | `infra/storage.yaml` | Jobs/audio buckets private, Lifecycle, common Layer và history Lambda. |
+
+STORY-01A bổ sung `story_store.py`, `story_projects.py`, `story_chapters.py`, `story_content.py`, `story_text.py` trong Common Layer. Project/chapter dùng object riêng và ETag CAS; chương dài upload từng phần, segment pages chỉ công bố khi commit manifest. Story segment tối đa 10.000 ký tự UTF-16, ưu tiên trọn câu; worker chia nhỏ bên trong một job. Chương đã lưu không tự chia lại. Prefix `audiobooks/demo/` nằm ngoài lifecycle xóa job 30 ngày; dữ liệu vẫn mất khi Lab reset, nên người dùng cần backup. M3 cần review giới hạn scan, object ghi dở và retention trước Sandbox. [Hợp đồng](../../docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+STORY-UI-01 bổ sung `story_cover_image.py` và `story_covers.py`: presigned POST vào prefix staging có lifecycle 1 ngày; backend kiểm JPEG/PNG, dung lượng và pixel rồi mới sao chép vào prefix cover private, CAS metadata và cấp presigned GET 15 phút. Cover chính nằm ngoài TTL job; `DELETE /cover` dọn object sau CAS. Chưa kiểm upload/CORS/retention trên bucket Sandbox. [Hợp đồng ảnh bìa](../../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
+
+STORY-01B bổ sung `story_batch_store.py` lưu plan/run/queue item riêng theo segment, `story_slots.py` dùng CAS giới hạn job đang dispatch trong một project, `story_content.segment_at` đọc revision bất biến. `db.remaining_chars` và `expression.remaining_gemini_calls` chỉ trả ước tính cho UI/dispatcher; reserve thực vẫn ở M5/M2. M3 cần review S3 CAS, slot, chi phí đọc progress và retention trước Sandbox. [Hợp đồng batch](../../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026).
 | `tests/test_jobs.py` | Schema, CAS, cursor, quota, expiry, tombstone và recovery. |
 | `tests/test_storage.py` | Storage/audio invariants; chuyển từ suite M2 về owner M3. |
 | `tests/fake_s3.py` | Fixture S3 dùng chung cho M2/M3/M5, không nằm trong Layer runtime. |

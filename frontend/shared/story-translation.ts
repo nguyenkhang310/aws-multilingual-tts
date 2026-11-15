@@ -1,0 +1,12 @@
+export type StoryGlossary = { revision: number; entries: { source: string; target: string }[] };
+export type TranslationPlan = { planId: string; projectId: string; chapterId: string;
+  sourceRevision: number; contentRevision: string; sourceLang: string; targetLang: string;
+  glossaryRevision: number; total: number; totalChars: number; createdAt: string };
+export type TranslationProgress = { planId: string; status: string; total: number; totalChars: number;
+  counts: Record<string, number>; items: { index: number; status: string; attempts: number; errorCode?: string }[];
+  nextCursor: string | null };
+export type TranslationChunk = { index: number; sourceText: string; translatedText: string | null;
+  status: string; attempts: number; errorCode?: string; version?: number };
+export type ApprovedTranslation = { version: number; revision: string; planId: string; sourceRevision: number;
+  sourceContentRevision: string; sourceLang: string; targetLang: string; glossaryRevision: number;
+  segmentCount: number; textLength: number; checksum: string; approvedAt: string };

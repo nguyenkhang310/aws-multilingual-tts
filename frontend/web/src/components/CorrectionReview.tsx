@@ -12,6 +12,7 @@ export default function CorrectionReview({ correction, onChoose, onClose, transl
   limit?: number;
 }) {
   const [edited, setEdited] = useState(correction.correctedText);
+  const editedCorrection = edited !== correction.correctedText;
   let end = 0;
   const pieces = [...correction.changes].sort((a, b) => a.start - b.start).flatMap((change, index) => {
     if (change.start < end || change.end > correction.correctedText.length) return [];
@@ -29,9 +30,14 @@ export default function CorrectionReview({ correction, onChoose, onClose, transl
     <textarea id="review-edit" value={edited} onChange={(event) => setEdited(event.target.value)} maxLength={limit} rows={5} />
     {error && <p role="alert" className="inline-error">{error}</p>}
     <div className="modal-actions">
-      {!translation && <Button className="secondary-button" onClick={() => onChoose(correction.originalText)}>Giữ bản gốc</Button>}
-      <Button className={translation ? "secondary-button" : "primary-button"} onClick={() => onChoose(correction.correctedText)}>{translation ? "Dùng bản dịch" : "Dùng bản sửa"}</Button>
-      <Button className={translation ? "primary-button" : "secondary-button"} disabled={!edited.trim()} onClick={() => onChoose(edited)}>{translation ? "Xác nhận nội dung" : "Dùng bản tự chỉnh"}</Button>
+      {translation ? <>
+        <Button className="secondary-button" onClick={() => onChoose(correction.correctedText)}>Dùng bản dịch</Button>
+        <Button className="primary-button" disabled={!edited.trim()} onClick={() => onChoose(edited)}>Xác nhận nội dung</Button>
+      </> : <>
+        <Button className="secondary-button" onClick={() => onChoose(correction.originalText)}>Giữ bản gốc</Button>
+        <Button className={editedCorrection ? "primary-button" : "secondary-button"} disabled={!edited.trim()} onClick={() => onChoose(edited)}>Dùng bản tự chỉnh</Button>
+        <Button className={editedCorrection ? "secondary-button" : "primary-button"} onClick={() => onChoose(correction.correctedText)}>Dùng bản sửa</Button>
+      </>}
     </div>
   </Modal>;
 }

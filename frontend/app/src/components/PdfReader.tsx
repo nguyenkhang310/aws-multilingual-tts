@@ -10,16 +10,16 @@ const PAGE_URL = Image.resolveAssetSource(PAGE)?.uri.split('?')[0] ?? '';
 const HOST = /^https?:/.test(PAGE_URL) ? PAGE_URL : API_BASE;
 const READER_URL = /^https?:/.test(HOST) ? new URL('/ocr/reader.html', HOST).href : PAGE_URL;
 
-export interface PdfReaderProps { base64: string | null; kind?: string; lang?: string; scan?: boolean; mode?: DocumentMode; onProgress?: (message: string) => void; onResult: (text?: string, error?: string, warning?: string) => void }
+export interface PdfReaderProps { base64: string | null; kind?: string; lang?: string; scan?: boolean; mode?: DocumentMode; maxChars?: number; onProgress?: (message: string) => void; onResult: (text?: string, error?: string, warning?: string) => void }
 /** Giữ WebView giữa các lần nhập để dùng lại bộ OCR; base64 rỗng nghĩa là đang chờ việc mới. */
-export default function PdfReader({ base64, kind = 'pdf', lang = 'vi-VN', scan = false, mode = 'device', onProgress, onResult }: PdfReaderProps) {
+export default function PdfReader({ base64, kind = 'pdf', lang = 'vi-VN', scan = false, mode = 'device', maxChars, onProgress, onResult }: PdfReaderProps) {
   const ref = useRef<WebView<unknown>>(null);
   const callbacks = useRef({ onResult, onProgress });
   useLayoutEffect(() => { callbacks.current = { onResult, onProgress }; }, [onResult, onProgress]);
   const ready = useRef(false);
   const supportsCloud = useRef(false);
   const sent = useRef<string | null>(null);
-  const job = useRef({ base64, kind, lang, scan, mode });
+  const job = useRef({ base64, kind, lang, scan, mode, maxChars });
   const cloudRequest = useRef<AbortController | null>(null);
   useEffect(() => () => cloudRequest.current?.abort(), []);
   const run = () => {
@@ -30,13 +30,13 @@ export default function PdfReader({ base64, kind = 'pdf', lang = 'vi-VN', scan =
       callbacks.current.onResult(undefined, 'Bộ đọc cũ chưa hỗ trợ Gemini. Hãy cập nhật bản web rồi mở lại app.');
       return;
     }
-    ref.current?.injectJavaScript(`window.extractPdf(${JSON.stringify(current.base64)},${JSON.stringify(current.kind)},${JSON.stringify(current.lang)},${current.scan},${JSON.stringify(current.mode)});true;`);
+    ref.current?.injectJavaScript(`window.extractPdf(${JSON.stringify(current.base64)},${JSON.stringify(current.kind)},${JSON.stringify(current.lang)},${current.scan},${JSON.stringify(current.mode)},${JSON.stringify(current.maxChars)});true;`);
   };
   useEffect(() => {
-    job.current = { base64, kind, lang, scan, mode };
+    job.current = { base64, kind, lang, scan, mode, maxChars };
     if (!base64) sent.current = null;
     run();
-  }, [base64, kind, lang, scan, mode]);
+  }, [base64, kind, lang, scan, mode, maxChars]);
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!ready.current) callbacks.current.onResult(undefined, 'Chưa tải được bộ đọc tài liệu. Kiểm tra kết nối và cập nhật bản web trên máy chủ.');

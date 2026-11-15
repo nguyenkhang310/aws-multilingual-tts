@@ -247,8 +247,25 @@ Người dùng giao `TTS-INTEGRATION-03`: web/app gọi Azure Translator để p
 
 `GUIDE.md` ở thư mục gốc là bản giải thích dễ đọc, riêng cho người dùng hiện tại và được ignore khỏi Git theo yêu cầu. Sau mỗi commit mới do người dùng tạo hoặc sau khi pull/merge commit mới của thành viên, nếu đang hỗ trợ người dùng trong workspace này thì cập nhật GUIDE.md: ghi commit/hash/ngày, thay đổi chức năng, file/owner bị ảnh hưởng, cách dùng và mức kiểm chứng; giữ lịch sử phần cũ và sửa nội dung đã lỗi thời. Không coi GUIDE.md là nguồn hợp đồng kỹ thuật; README/CHANGELOG của owner, CONVENTIONS và code mới là nguồn chuẩn. Vì GUIDE.md bị ignore, thay đổi này không tự được gửi tới máy của thành viên khác; khi hướng dẫn họ, nói rõ cần tạo/cập nhật bản local tương ứng.
 
-## 18. Tích hợp nhánh M5 và đồng bộ app — 15/11/2026
+## 18. Audio Truyện STORY-01A — 14/11/2026
 
-Người dùng giao lấy code M5, review, đưa tính năng mới lên app và đồng bộ tất cả các nhánh. Giữ toàn bộ 13 commit tới `8224da7`, không viết lại lịch sử hoặc force-push. Phạm vi gồm duyệt bản dịch/chính tả, cường độ sắc thái, đo thời gian, launcher và sửa lỗi tích hợp; không tự sửa key/env, gọi provider thật hoặc deploy AWS.
+Được triển khai Project → Chapter → Segment và nhập chương dài trên web, quản lý cơ bản trên Expo. M1 route `/audiobooks*` và CORS; M5 giữ handler riêng trong submit Lambda; M3 sở hữu S3 metadata/CAS; M4 giữ UI, parser tài liệu và CloudFront. Nguồn chuẩn là [hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026). Không tạo MP3 hàng loạt, queue, AI phân vai hoặc dịch cả chương trong STORY-01A. Dữ liệu nằm ở jobs bucket dưới `audiobooks/demo/`; local Moto mất dữ liệu khi dừng backend, cần xuất backup trước khi kết thúc Lab. Thay đổi M1/M3/M4 cần owner review; code/test local không có nghĩa đã deploy AWS.
+
+## 19. Audio Truyện STORY-01B — 14/11/2026
+
+Được triển khai batch TTS từ segment đã lưu: M3 giữ plan/queue/CAS slot, M5 lập plan và cấp từng item qua Submit/idempotency/quota, M2 worker tạo audio theo luồng hiện có, M1 route và SAM wiring, M4 web/Expo hiển thị progress. Plan cố định theo revision và chỉ đọc ngôn ngữ nguồn, không tự dịch. Web đang mở gọi tick; Expo có tick thủ công. Không có backend scheduler tiếp tục cấp item khi đóng cả hai client; pause/resume/retry thuộc STORY-01C. Nguồn chuẩn là [hợp đồng batch](docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026). Các owner M1/M3/M4 và M2 ở giao diện worker/quota cần review; local fake audio không chứng minh MP3 thật trên Sandbox. Không tự commit, push, deploy hay gọi provider thật.
+
+## 20. Tích hợp nhánh M5 và đồng bộ app — 16/11/2026
+
+Người dùng giao lấy code M5, review, đưa tính năng mới lên app và đồng bộ tất cả các nhánh. Giữ toàn bộ 22 commit M5 tới `48e7008` và các sửa tích hợp local `5cb0fc8`, không viết lại lịch sử hoặc force-push. Phạm vi gồm duyệt bản dịch/chính tả, cường độ sắc thái, đo thời gian, launcher và sửa lỗi tích hợp; không tự sửa key/env, gọi provider thật hoặc deploy AWS.
 
 App dùng chung `TextReview` cho bản dịch và chính tả, xếp một cột trên màn hẹp/chữ lớn, lỗi và giới hạn nhập nằm trong màn duyệt. Dịch/chính tả bật phải duyệt từng phần; Tạo giọng đọc khi tắt kiểm chính tả vẫn hỗ trợ hàng loạt và dừng sau phần hiện tại. Giữ bản dịch tự chỉnh khi thử lại; response cũ không ghi lỗi vào bản nháp mới. Web/app dùng chung phân loại lỗi submit, gồm `UNSUPPORTED_STYLE_INTENSITY` xảy ra trước job. Export/mock/browser không phải nghiệm thu native hoặc Sandbox; evidence tích hợp chỉ bổ sung CHANGELOG M4.
+
+
+## 21. Thiết kế và bàn giao Audio Truyện — 16/11/2026
+
+Người dùng yêu cầu mọi tính năng M5 bổ sung sau này tuân theo cùng ngôn ngữ thiết kế web/app: gọn, dễ hiểu và nhất quán với cách tổ chức ứng dụng iOS. Màn chính ưu tiên nội dung và một hành động chính; cài đặt, ảnh bìa, thuật ngữ, backup và thao tác hiếm dùng đưa vào sheet/details có nhãn rõ. Không thêm chấm trang trí, badge, mô tả quảng bá hoặc khối rỗng không có chức năng. Giữ thông báo thiết yếu về gửi ảnh trực tuyến, quota, dữ liệu mất khi hết Lab và lỗi xử lý; không xóa chúng để giảm chữ.
+
+App dùng các thành phần `ui`, `Sheet`, `layout` hiện có; chương chia Nội dung/Bản dịch/Âm thanh, giọng và sắc thái mở riêng, trình phát nằm trong sheet thay vì đẩy route dưới modal. Giữ safe area, bàn phím iOS/Android, cỡ chữ hệ thống, reflow màn hẹp/ngang, sáng/tối và giảm chuyển động. Khi bỏ nội dung chưa lưu phải có lựa chọn giữ/bỏ; polling không được thay bản dịch đang sửa. Browser/Expo export không thay thế kiểm native thật.
+
+Web/app dùng `shared/story-client.ts` và `story-translation-run.ts` cho hợp đồng và điều phối dịch; wrapper từng nền tảng chỉ giữ upload ảnh hoặc tương tác hệ thống. Metadata dùng version/revision/CAS, không tạo job khi nhập/lưu chương hoặc duyệt dịch. Tạo audio phải xác nhận, `UNCERTAIN` không retry, lỗi không đổi provider. Root SAM truyền `GeminiTtsDailyCallLimit` đúng một lần cho cả TtsCore và Submit. Không gọi live/deploy từ yêu cầu merge và chỉnh UI này; bằng chứng mới ghi trong CHANGELOG M4.

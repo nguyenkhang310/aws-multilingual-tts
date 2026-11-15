@@ -20,6 +20,10 @@ Parameters:
     Type: String
   AudioBucket:
     Type: String
+  StoryCompletionFunctionName:
+    Type: String
+    Default: ''
+    Description: M5 submit function for private worker completion and failure events
   TtsApiParameterName:
     Type: String
     Description: Name of the approved key reference, never the key value
@@ -130,6 +134,11 @@ Resources:
       Qualifier: $LATEST
       MaximumRetryAttempts: !Ref MaximumRetryAttempts
       MaximumEventAgeInSeconds: !Ref MaximumEventAgeInSeconds
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StoryCompletionFunctionName}"
+        OnFailure:
+          Destination: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${StoryCompletionFunctionName}"
 
   VoicesFunction:
     Type: AWS::Serverless::Function

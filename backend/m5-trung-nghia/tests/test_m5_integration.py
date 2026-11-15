@@ -50,8 +50,7 @@ class M5IntegrationTest(FlowTestCase):
         return values[0] if values else 0
 
     def test_correction_enabled_and_provider_failure_through_router(self):
-        suggestion = {"correctedText": "Xin chào", "changes": [
-            {"from": "chàoo", "to": "chào", "start": 4, "end": 8}]}
+        suggestion = {"correctedText": "Xin chào"}
         settings = {"GEMINI_TYPO_ENABLED": "true", "GEMINI_API_PARAMETER_NAME": "/tts/dev/gemini",
                     "GEMINI_MODEL": "gemini-test"}
         with mock.patch.dict(os.environ, settings), \

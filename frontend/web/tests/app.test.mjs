@@ -16,6 +16,11 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
   api.stats = async () => ({ totalJobs: 1, totalChars: 17, byLang: { "vi-VN": 1 }, cacheHits: 0 });
   env.win.HTMLMediaElement.prototype.pause = () => {};
   async function click(element) { assert.ok(element); await act(async () => { element.click(); await settle(); }); }
+  async function chooseSourceLanguage() {
+    await click(env.mount.querySelector('#language'));
+    const option = [...document.querySelectorAll('[role="option"]')].find(item => item.textContent.includes('Tiếng Việt'));
+    await click(option);
+  }
   async function type(input, value) {
     await act(async () => {
       Object.getOwnPropertyDescriptor(env.win.HTMLInputElement.prototype, "value").set.call(input, value);
@@ -25,9 +30,9 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
   }
   try {
     await act(async () => { env.root.render(React.createElement(App)); await settle(); });
-    await suite.test("bảy màn hình render và giữ tên sản phẩm trên tab", async () => {
+    await suite.test("các màn hình render và giữ tên sản phẩm trên tab", async () => {
       for (const [route, title] of [["dashboard", "Tổng quan"], ["studio", "Tạo giọng đọc"], ["translation", "Dịch và đọc"],
-        ["voices", "Chọn giọng đọc"], ["library", "Bản thu đã lưu"]]) {
+        ["audiobooks", "Audio Truyện"], ["voices", "Chọn giọng đọc"], ["library", "Bản thu đã lưu"]]) {
         await click(env.mount.querySelector(`.sidebar a[href="#${route}"]`));
         assert.equal(env.mount.querySelector("h1").textContent, title);
         assert.match(document.title, /TTS Studio/);
@@ -80,6 +85,7 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
     });
     await suite.test("nút tạo giọng nằm trong ô nhập và submit không tạo bản thu trùng", async () => {
       await click(env.mount.querySelector('.sidebar a[href="#studio"]'));
+      await chooseSourceLanguage();
       const form = env.mount.querySelector('.composer');
       const button = form.querySelector('.editor-status button[type="submit"]');
       const editor = form.querySelector('textarea');
@@ -146,6 +152,7 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
     });
     await suite.test("màn dịch dùng Azure; Gemini chỉ là lựa chọn đọc ảnh", async () => {
       await click(env.mount.querySelector('.sidebar a[href="#translation"]'));
+      await chooseSourceLanguage();
       const fileInput = env.mount.querySelector('input[aria-label="Chọn tài liệu văn bản"]');
       await act(async () => {
         Object.defineProperty(fileInput, 'files', { configurable: true, value: [new env.win.File(['Nội dung tài liệu.'], 'bai-hoc.txt', { type: 'text/plain' })] });
@@ -220,6 +227,8 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
         assert.equal(review.querySelector('.correction-text mark').textContent, 'chào');
         const correctedButton = [...review.querySelectorAll('.modal-actions button')].find(button => button.textContent === 'Dùng bản sửa');
         const editedButton = [...review.querySelectorAll('.modal-actions button')].find(button => button.textContent === 'Dùng bản tự chỉnh');
+        assert.deepEqual([...review.querySelectorAll('.modal-actions button')].map(button => button.textContent),
+          ['Giữ bản gốc', 'Dùng bản tự chỉnh', 'Dùng bản sửa']);
         assert.ok(correctedButton.classList.contains('primary-button'));
         assert.ok(editedButton.classList.contains('secondary-button'));
         const edit = env.mount.querySelector('#review-edit');
@@ -227,6 +236,8 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
           Object.getOwnPropertyDescriptor(env.win.HTMLTextAreaElement.prototype, 'value').set.call(edit, 'Xin chào thầy.');
           edit.dispatchEvent(new env.win.Event('input', { bubbles: true }));
         });
+        assert.ok(correctedButton.classList.contains('secondary-button'));
+        assert.ok(editedButton.classList.contains('primary-button'));
         await click(editedButton);
         assert.equal(submitted[0].text, 'Xin chào thầy.');
       } finally { api.correct = originalCorrect; api.synthesize = originalSynthesize; }
@@ -266,7 +277,7 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
       assert.ok(drawer.querySelector('.sidebar-glass'));
       assert.ok(drawer.querySelector('.nav-selection'));
       assert.equal(drawer.querySelector('.product-name').textContent, 'TTS Studio');
-      assert.equal(drawer.querySelectorAll('a').length, 7);
+      assert.equal(drawer.querySelectorAll('a').length, 8);
       assert.equal(drawer.querySelectorAll('.nav-item.active').length, 1);
       assert.ok(drawer.querySelector('.sidebar-bottom a[href="#settings"]'));
       assert.equal(drawer.querySelector('.mobile-nav'), null);

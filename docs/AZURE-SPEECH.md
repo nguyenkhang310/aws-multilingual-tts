@@ -392,6 +392,19 @@ bash deployment/scripts/sandbox.sh web
 
 Lệnh chạy npm ci, build với API base là domain CloudFront của chính stack, đồng bộ dist lên bucket web và tạo invalidation. Script dùng `s3 sync --delete` cho hosting; không áp dụng cho bucket jobs/audio.
 
+`npm ci` cài ELD 2.1.1 từ tarball npm URL cố định trong `frontend/web/package-lock.json`; lockfile xác minh SHA-512 tarball, còn lifecycle `prepare` xác minh SHA-256 của model small (1.600.055 byte). Build web tạo `frontend/web/dist/assets/static.small-<hash>.js`; `s3 sync` tải chunk này lên cùng bucket web với trang. Trình duyệt lấy model từ CloudFront của website khi cần nhận diện, không gọi CDN/model host bên ngoài. Model Expo nằm trong JavaScript bundle được Metro/Expo đóng gói.
+
+Với checkout GitHub mới, lệnh deploy web là:
+
+```bash
+cd ~
+git clone --branch main https://github.com/solvarhuynh/aws-multilingual-tts.git
+cd aws-multilingual-tts
+bash deployment/scripts/sandbox.sh web
+```
+
+`sandbox.sh web` cần stack hiện tại có `WebDomain`, `DistributionId`, `WebBucketName` Outputs và quyền Sandbox cho các bước deploy. Nó tự cài, kiểm model, build và upload. Có thể xác minh source trước khi deploy mà không gọi AWS bằng `cd frontend/web && npm ci && npm run verify:language-model && npm run build`. Nếu nhóm dùng nhánh tích hợp khác `main`, clone nhánh đó thay cho `main`.
+
 Kết quả dự kiến:
 
 ```text

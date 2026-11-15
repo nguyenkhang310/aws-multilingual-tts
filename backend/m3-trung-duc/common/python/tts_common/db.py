@@ -185,12 +185,17 @@ def checkpoint_job(job, **fields):
     return _write(job, **fields)
 
 
-def fail_job(job, message):
-    """Ghi FAILED với lời nhắn đã làm sạch."""
-    return _write(job, status="FAILED", leaseUntil=None, errorMessage=message)
+def fail_job(job, message, *, error_code=None, retryable=False, retry_after_seconds=None):
+    """Ghi lỗi đã làm sạch; chỉ đánh dấu retryable khi provider xác nhận an toàn."""
+    fields = {"status": "FAILED", "leaseUntil": None, "errorMessage": message,
+              "errorCode": error_code or "WORKER_FAILED", "retryable": bool(retryable)}
+    if retryable and isinstance(retry_after_seconds, int) and not isinstance(retry_after_seconds, bool):
+        fields["retryAfterSeconds"] = max(1, min(300, retry_after_seconds))
+    return _write(job, **fields)
 
 
-def create_job(user_id, text, lang, voice, speed, translate_to=None, provider=None, engine=None, job_id=None, style=None, style_intensity=1.0):
+def create_job(user_id, text, lang, voice, speed, translate_to=None, provider=None, engine=None, job_id=None,
+               style=None, style_intensity=1.0, story_context=None):
     """Tạo job PENDING; If-None-Match chặn ghi đè nếu trùng mã."""
     job_id = job_id if job_id is not None else make_job_id()
     if not are_valid_ids(user_id, job_id):
@@ -225,6 +230,7 @@ def create_job(user_id, text, lang, voice, speed, translate_to=None, provider=No
         "leaseUntil": None,
         "dispatchState": "CREATED",
         "deleting": False,
+        **({"storyContext": story_context} if story_context else {}),
     }
     aws.s3().put_object(
         Bucket=config.JOBS_BUCKET,
@@ -435,6 +441,20 @@ def _change_usage(delta, limit=None):
 def reserve_chars(chars):
     """Giữ chỗ trong trần ngày trước khi tạo job; đầy hoặc tranh chấp liên tục thì trả False."""
     return _change_usage(chars, config.DAILY_CHAR_LIMIT)
+
+
+def remaining_chars():
+    """Estimate only; reserve_chars is the authoritative CAS quota check."""
+    client = aws.s3()
+    try:
+        response = client.get_object(Bucket=config.JOBS_BUCKET, Key=_usage_key())
+    except client.exceptions.NoSuchKey:
+        return config.DAILY_CHAR_LIMIT
+    try:
+        used = json.loads(response["Body"].read())["chars"]
+    finally:
+        response["Body"].close()
+    return max(0, config.DAILY_CHAR_LIMIT - used)
 
 
 def refund_chars(chars):

@@ -16,6 +16,10 @@ Nhận handler contract/tên Lambda từ M2/M3/M5 và domain/header từ M4. Bà
 | `reference/` | Ma trận quyền, runbook kiểm Sandbox và quyết định EC2 lịch sử. |
 | `tests/` | Kiểm thử router bằng invoker giả; không gọi AWS. |
 
+STORY-01A thêm route `/audiobooks*` tới handler M5, cho PUT/PATCH trong CORS và giữ scope `demo` do router gán. CloudFront behavior thuộc M4; M1 cần review Function URL/CORS trên Sandbox trước khi triển khai. [Hợp đồng](../../docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+STORY-01B thêm route plan/start/tick/progress dưới `/audiobooks*`; root SAM truyền `StoryMaxActive` (1 mặc định, tối đa 2) vào M5. M1 cần review route, timeout và root wiring trước triển khai. [Hợp đồng batch](../../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026).
+STORY-UI-01 thêm các route upload ticket, xác nhận, gia hạn URL và xóa ảnh dưới `/audiobooks/{id}/cover*`, giữ demo token và scope do router gán; upload bytes đi thẳng tới S3 bằng presigned POST. CloudFront tiếp tục dùng behavior `/audiobooks*`, không cần behavior/API mới. Cần review CORS Jobs bucket và test trên Sandbox trước khi triển khai.
+
 Đọc [AGENTS.md](../../AGENTS.md), [kiến trúc](../../docs/ARCHITECTURE.md) và [API/dữ liệu](../../docs/CONVENTIONS.md) trước khi sửa. Quyền AWS, secret và gate triển khai được quy định một lần ở AGENTS; không tự thêm dịch vụ ngoài baseline.
 
 ## Tiến độ đã ghi nhận

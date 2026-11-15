@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, DEMO } from "../lib/api";
 import { extractDocument } from "../lib/document";
 import { DEFAULT_SPEED, readStored, samples, storeValue, validateInput } from "../lib/data";
@@ -7,11 +7,12 @@ import { MAX_DOCUMENT_CHARS, checkedDocument, splitDocument } from '../../../sha
 import { HISTORY_SYNC_INTERVAL, mergeHistoryPage } from '../../../shared/history';
 import { expressionOptions } from '../../../shared/expression';
 import { providerOptions } from '../../../shared/voices';
+import { detectLanguage, type LanguageDetection } from '../lib/language-detection';
 import { readDocumentPage, type DocumentMode } from '../../../shared/vision';
 import { markTtsDone, ttsTiming } from '../../../shared/tts-performance';
-import { skippableCorrection } from '../../../shared/correction-check';
+import { correctionNotice as correctionFailureNotice, skippableCorrection } from '../../../shared/correction-check';
 
-type Review = { input: SynthesizeInput; correction: TextCorrection; documentText: string; partIndex: number; partLimit?: number; translation?: boolean; approvalKey?: string };
+type Review = { input: SynthesizeInput; correction: TextCorrection; documentText: string; partIndex: number; partLimit?: number; translation?: boolean; sourceLang?: string; approvalKey?: string };
 type Notify = (message: string, error?: boolean) => void;
 type EditorOptions = { draftKey?: string; translateTo?: string | null };
 export type Session = ReturnType<typeof useSession>;
@@ -189,11 +190,16 @@ export function useEditor(
   { draftKey = DRAFT_KEYS.speech, translateTo = null }: EditorOptions = {},
 ) {
   const { languages, completed, showRecording } = session;
+  const languagesRef = useRef(languages);
+  useLayoutEffect(() => { languagesRef.current = languages; }, [languages]);
   const [text, setText] = useState(() => {
     const draft = readStored<unknown>(draftKey, "");
     return typeof draft === "string" ? draft.slice(0, MAX_DOCUMENT_CHARS) : "";
   });
   const [lang, setLang] = useState("vi-VN");
+  const [autoLanguage, setAutoLanguage] = useState(true);
+  const [languageDetection, setLanguageDetection] = useState<LanguageDetection | null>(null);
+  const [voiceNeedsSelection, setVoiceNeedsSelection] = useState(false);
   const [voice, setVoice] = useState("");
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [selectedStyle, setStyle] = useState('neutral');
@@ -230,10 +236,11 @@ export function useEditor(
   const [draftSaved, setDraftSaved] = useState(false);
   const mounted = useRef(true);
   const submitLock = useRef(false);
+  const languageLock = useRef(false);
   const fileLock = useRef(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const completionKey = (index: number, input: SynthesizeInput) => JSON.stringify([draftKey, index, input]);
-  const previewKey = (index: number, source: string) => JSON.stringify([index, source, lang, translateTo]);
+  const previewKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([index, source, sourceLang, translateTo]);
 
   useEffect(() => { setCorrectionNotice(''); }, [checkSpelling]);
 
@@ -255,21 +262,56 @@ export function useEditor(
     const initial = preferredLanguage(languages);
     if (initial) setLang((previous) => (languages.some((l) => l.lang === previous && l.voices.length) ? previous : initial.lang));
   }, [languages]);
+  useEffect(() => {
+    if (!autoLanguage) { setLanguageDetection(null); return; }
+    if (!text.trim()) { setLanguageDetection(null); return; }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      let found: LanguageDetection;
+      try { found = await detectLanguage(text); } catch { return; }
+      if (!active) return;
+      setLanguageDetection(found);
+      if (found.status !== 'detected' || !found.language || !languages.some(item => item.lang === found.language && item.voices.length)) return;
+      if (found.language !== lang) {
+        if (!translateTo) {
+          setVoice(previous => languages.find(item => item.lang === found.language)?.voices.some(item => item.id === previous)
+            ? previous : languages.find(item => item.lang === found.language)?.voices[0]?.id ?? '');
+          setVoiceNeedsSelection(false);
+        }
+        setLang(found.language);
+      }
+    }, 320);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [text, autoLanguage, languages, lang, translateTo]);
 
   const language = languages.find((l) => l.lang === (translateTo || lang));
   const selectedVoice = language?.voices.find(v => v.id === voice);
   const styles = expressionOptions(selectedVoice?.styles, language?.autoEmotionEnabled);
   const style = styles.some(item => item.value === selectedStyle) ? selectedStyle : 'neutral';
   const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(language?.provider === 'gemini' ? { provider: 'gemini' } : {}) };
-  const approvalKey = (index: number, source: string) => JSON.stringify([previewKey(index, source), voice, speed, expression]);
+  const approvalKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([previewKey(index, source, sourceLang), voice, speed, expression]);
   useEffect(() => {
     setVoice((previous) =>
-      language?.voices.some((v) => v.id === previous) ? previous : language?.voices[0]?.id || "",
+      language?.voices.some((v) => v.id === previous) ? previous : voiceNeedsSelection ? '' : language?.voices[0]?.id || "",
     );
-  }, [language]);
+  }, [language, voiceNeedsSelection]);
+
+  function selectLanguage(value: string) {
+    revision.current++;
+    if (value === 'auto') { setAutoLanguage(true); return; }
+    setAutoLanguage(false); setLanguageDetection(null);
+    if (value !== lang) {
+      if (!translateTo) {
+        setVoice(previous => languages.find(item => item.lang === value)?.voices.some(item => item.id === previous) ? previous : '');
+        setVoiceNeedsSelection(true);
+      }
+    }
+    setLang(value);
+  }
 
   function updateText(value: string) {
     revision.current++;
+    setLanguageDetection(null);
     correctionWait.current?.abort();
     cancelReview();
     setText(value);
@@ -283,8 +325,11 @@ export function useEditor(
     editorRef.current?.focus();
   }
   function chooseVoice(code: string, id: string) {
+    revision.current++;
+    setAutoLanguage(false);
     setLang(code);
     setVoice(id);
+    setVoiceNeedsSelection(false);
     setError("");
   }
 
@@ -294,34 +339,46 @@ export function useEditor(
   }
   useEffect(() => {
     revision.current++;
-    const pending = reviewRef.current?.input;
-    if (pending && (reviewRef.current?.documentText !== text || pending.lang !== lang || pending.voice !== voice ||
-      pending.speed !== speed || (pending.style ?? 'neutral') !== style || (pending.styleIntensity ?? 1) !== (expression.styleIntensity ?? 1) || pending.provider !== expression.provider || pending.translateTo !== translateTo || reviewRef.current?.partLimit !== partLimit)) cancelReview();
+    const current = reviewRef.current;
+    const pending = current?.input;
+    if (pending && (current?.documentText !== text || (current.translation
+      ? current.sourceLang !== lang || pending.lang !== translateTo
+      : pending.lang !== lang || pending.translateTo !== translateTo) || pending.voice !== voice ||
+      pending.speed !== speed || (pending.style ?? 'neutral') !== style || (pending.styleIntensity ?? 1) !== (expression.styleIntensity ?? 1) || pending.provider !== expression.provider || current?.partLimit !== partLimit)) cancelReview();
   }, [text, lang, voice, speed, style, styleIntensity, translateTo, partLimit, expression.provider]);
 
   async function generate() {
     const preprocessingStarted = performance.now();
     if (language?.available === false) { setError('Chưa bật Gemini TTS ở máy chủ.'); return; }
     if (documentReview) return;
-    if (submitLock.current || fileLock.current || reviewRef.current || batchLock.current) return;
+    if (submitLock.current || languageLock.current || fileLock.current || reviewRef.current || batchLock.current) return;
     try { checkedDocument(text); } catch (reason) { setError((reason as Error).message); return; }
-    const part = parts[selectedPart] ?? '';
+    const beforeDetection = revision.current;
+    languageLock.current = true;
+    let sourceLang: string | null;
+    try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
+    if (!sourceLang || beforeDetection !== revision.current || languagesRef.current !== languages) return;
+    const activeLanguage = languages.find(item => item.lang === (translateTo || sourceLang));
+    const activeVoice = activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
+    const activeExpression = activeVoice === voice ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
+    const activeParts = splitDocument(text, activeLanguage?.maxChars);
+    const part = activeParts[selectedPart] ?? '';
     const invalid = validateInput(part, speed);
     if (invalid) {
       setError(invalid);
       editorRef.current?.focus();
       return;
     }
-    if (!voice || !language?.voices.some((v) => v.id === voice)) {
+    if (!activeVoice) {
       setError("Vui lòng chọn một giọng đọc khả dụng.");
       return;
     }
     if (translateTo && language?.translationEnabled === false) { setError("Chưa kết nối Azure Translator. Nhờ quản trị viên cấu hình dịch vụ dịch."); return; }
-    if (translateTo === lang) {
+    if (translateTo === sourceLang) {
       setError("Hãy chọn ngôn ngữ đích khác với ngôn ngữ gốc.");
       return;
     }
-    const input = { text: part, lang, voice, speed, translateTo, ...expression };
+    const input = { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression };
     ttsTiming('frontend_preprocessing', preprocessingStarted, language?.provider ?? '', 'READY');
     return translateTo ? previewPart(input, selectedPart) : runSynthesis(input, checkSpelling);
   }
@@ -330,7 +387,7 @@ export function useEditor(
     if (submitLock.current) return;
     submitLock.current = true; setBusy(true); setError("");
     const currentRevision = revision.current;
-    const key = previewKey(index, source.text);
+    const key = previewKey(index, source.text, source.lang);
     try {
       let translated = previews.current.get(key);
       if (!translated) {
@@ -339,10 +396,10 @@ export function useEditor(
       }
       if (!mounted.current || currentRevision !== revision.current) return;
       const input = { ...source, text: translated, lang: translateTo!, translateTo: null };
-      const approval = approvalKey(index, source.text);
+      const approval = approvalKey(index, source.text, source.lang);
       const correction: TextCorrection = { status: 'checked', language: translateTo!, hasTypos: false,
         originalText: source.text, correctedText: approved.current.get(approval)?.text ?? translated, changes: [] };
-      const pending = { input, correction, documentText: text, partIndex: index, partLimit, translation: true, approvalKey: approval };
+      const pending = { input, correction, documentText: text, partIndex: index, partLimit, translation: true, sourceLang: source.lang, approvalKey: approval };
       reviewRef.current = pending; setReview(pending);
     } catch (reason) { if (mounted.current && currentRevision === revision.current) setError((reason as Error).message); }
     finally { submitLock.current = false; if (mounted.current) setBusy(false); }
@@ -387,14 +444,15 @@ export function useEditor(
         let correction: TextCorrection | null = null;
         let failed = false;
         try { correction = await waiting.result; }
-        catch { failed = true; if (mounted.current && currentRevision === revision.current) setCorrectionNotice('Chưa kiểm tra được chính tả bằng Gemini. Bản thu dùng nguyên văn nội dung đã chọn.'); }
+        catch { failed = true; checkedTexts.current.add(correctionKey); if (mounted.current && currentRevision === revision.current) setCorrectionNotice(correctionFailureNotice()); }
         finally {
           correctionWait.current = null;
           ttsTiming('correction_api', correctionStarted, language?.provider ?? '', correction?.status ?? 'SKIPPED');
         }
         if (!mounted.current || currentRevision !== revision.current) return;
         setChecking(false);
-        if (correction?.status === 'skipped') setCorrectionNotice('Gemini chưa kiểm tra được chính tả. Bản thu dùng nguyên văn nội dung đã chọn.');
+        if (correction?.status === 'skipped') { checkedTexts.current.add(correctionKey); setCorrectionNotice(correctionFailureNotice(correction.reason)); }
+        else if (correction?.status === 'checked' && !correction.hasTypos) setCorrectionNotice('Gemini không phát hiện lỗi đánh máy.');
         else if (!correction && !failed) setCorrectionNotice('Đã bỏ qua kiểm tra chính tả. Bản thu dùng nguyên văn nội dung đã chọn.');
         if (correction?.status === "checked" && correction.hasTypos && correction.correctedText !== input.text) {
           const pending = { input, correction, documentText: text, partIndex: index, partLimit, approvalKey };
@@ -404,7 +462,6 @@ export function useEditor(
         }
         if (correction?.status === 'checked') {
           checkedTexts.current.add(correctionKey);
-          setCorrectionNotice('Đã kiểm tra chính tả; không có đề xuất sửa.');
         }
       }
       const submitStarted = performance.now();
@@ -468,23 +525,32 @@ export function useEditor(
   async function generateAll() {
     if (language?.available === false) { setError('Chưa bật Gemini TTS ở máy chủ.'); return; }
     if (documentReview) return;
-    if (batchLock.current || submitLock.current || fileLock.current || reviewRef.current) return;
+    if (batchLock.current || submitLock.current || languageLock.current || fileLock.current || reviewRef.current) return;
     try { checkedDocument(text); } catch (reason) { setError((reason as Error).message); return; }
+    const beforeDetection = revision.current;
+    languageLock.current = true;
+    let sourceLang: string | null;
+    try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
+    if (!sourceLang || beforeDetection !== revision.current || languagesRef.current !== languages) return;
+    const activeLanguage = languages.find(item => item.lang === (translateTo || sourceLang));
+    const activeVoice = activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
+    const activeExpression = activeVoice === voice ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
+    const activeParts = splitDocument(text, activeLanguage?.maxChars);
     if (translateTo && language?.translationEnabled === false) { setError("Chưa kết nối Azure Translator. Nhờ quản trị viên cấu hình dịch vụ dịch."); return; }
-    if (translateTo === lang) { setError('Hãy chọn ngôn ngữ đích khác với ngôn ngữ gốc.'); return; }
-    if (!voice || !language?.voices.some(item => item.id === voice)) { setError('Vui lòng chọn giọng đọc.'); return; }
+    if (translateTo === sourceLang) { setError('Hãy chọn ngôn ngữ đích khác với ngôn ngữ gốc.'); return; }
+    if (!activeVoice) { setError('Vui lòng chọn giọng đọc.'); return; }
     if (translateTo) {
-      const next = parts.findIndex((part, index) => {
+      const next = activeParts.findIndex((part, index) => {
         if (!part.trim()) return false;
-        const input = approved.current.get(approvalKey(index, part));
+        const input = approved.current.get(approvalKey(index, part, sourceLang));
         return !input || !completed.current.has(completionKey(index, input));
       });
       if (next < 0) { notify('Đã tạo xong tất cả các phần.'); return; }
       setPartIndex(next);
-      await previewPart({ text: parts[next], lang, voice, speed, translateTo, ...expression }, next);
+      await previewPart({ text: activeParts[next], lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression }, next);
       return;
     }
-    const inputs = parts.map((part, index) => ({ index, input: { text: part, lang, voice, speed, translateTo, ...expression } })).filter(({ input }) => input.text.trim());
+    const inputs = activeParts.map((part, index) => ({ index, input: { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression } })).filter(({ input }) => input.text.trim());
     if (inputs.some(({ input }) => validateInput(input.text, input.speed))) { setError('Thiết lập phần đọc không hợp lệ.'); return; }
     batchLock.current = true; stopBatch.current = false;
     let done = inputs.filter(({ input, index }) => completed.current.has(completionKey(index, input))).length;
@@ -498,6 +564,29 @@ export function useEditor(
         setBatch({ done: ++done, total: inputs.length });
       }
     } finally { batchLock.current = false; if (mounted.current) setBatch(null); }
+  }
+
+  async function readyLanguage(): Promise<string | null> {
+    if (!autoLanguage) return lang;
+    let found: LanguageDetection;
+    try { found = await detectLanguage(text); }
+    catch { setError('Chưa tải được bộ nhận diện. Hãy chọn ngôn ngữ thủ công.'); return null; }
+    setLanguageDetection(found);
+    if (found.status !== 'detected' || !found.language) {
+      setError('Chưa xác định rõ ngôn ngữ. Hãy chọn thủ công.'); return null;
+    }
+    if (!languages.some(item => item.lang === found.language && item.voices.length)) {
+      setError('Nguồn giọng hiện tại chưa hỗ trợ ngôn ngữ dự đoán. Hãy chọn thủ công.'); return null;
+    }
+    if (lang !== found.language) {
+      setLang(found.language);
+      if (!translateTo) {
+        setVoice(previous => languages.find(item => item.lang === found.language)?.voices.some(item => item.id === previous)
+          ? previous : languages.find(item => item.lang === found.language)?.voices[0]?.id ?? '');
+        setVoiceNeedsSelection(false);
+      }
+    }
+    return found.language;
   }
 
   async function importFile(file?: File, scan = false) {
@@ -554,7 +643,9 @@ export function useEditor(
     editorRef,
     language,
     lang,
-    setLang,
+    setLang: selectLanguage,
+    autoLanguage,
+    languageDetection,
     voice,
     chooseVoice,
     speed,

@@ -5,6 +5,7 @@ import Sidebar from "./components/Sidebar";
 import PageHeader from "./components/PageHeader";
 import HeaderSearch from "./components/HeaderSearch";
 import Select from "./components/Select";
+import FilePickerButton from './components/FilePickerButton';
 import CorrectionReview from "./components/CorrectionReview";
 import DocumentReview from './components/DocumentReview';
 import { DOCUMENT_MODES, type DocumentMode } from '../../shared/vision';
@@ -40,6 +41,8 @@ import { DRAFT_KEYS, useEditor, useSession } from "./hooks/useStudio";
 import { useSidebarMotion } from "./hooks/useSidebarMotion";
 import { useTheme } from "./hooks/useTheme";
 import Dashboard from "./views/Dashboard";
+import Audiobooks from "./views/Audiobooks";
+import type { StoryChapter } from '../../shared/story';
 import type { HistoryItem, Page, Preferences } from "./lib/types";
 import { MAX_DOCUMENT_CHARS, OCR_LANGUAGES, wordCount } from '../../shared/documents';
 import { expressionHint } from '../../shared/expression';
@@ -72,6 +75,9 @@ function getPreferences(): Preferences {
 
 export default function App() {
   const [page, setPage] = useState<Page>(currentPage);
+  const [storyChapters, setStoryChapters] = useState<StoryChapter[]>([]);
+  const [storyChapterId, setStoryChapterId] = useState<string | null>(null);
+  const [storyProjectTitle, setStoryProjectTitle] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [query, setQuery] = useState("");
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -90,7 +96,6 @@ export default function App() {
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const notify = useCallback((text: string, error = false) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ text, error });
@@ -400,6 +405,8 @@ export default function App() {
       <div ref={sidebarMotion.ref} className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="glass-backdrop" aria-hidden="true" />
         <Sidebar page={page} collapsed={sidebarCollapsed} count={studio.history.length}
+          storyChapters={storyChapters} storyProjectTitle={storyProjectTitle}
+          selectedChapterId={storyChapterId} onChapter={setStoryChapterId}
           onToggle={sidebarMotion.toggleWithMotion}
           onNavigate={navigate} />
         <div className="workspace">
@@ -422,6 +429,8 @@ export default function App() {
                 hasMoreHistory={!!studio.nextCursor}
               />
             )}
+            {page === "audiobooks" && <Audiobooks onChaptersChange={setStoryChapters} onProjectChange={setStoryProjectTitle}
+              selectedChapterId={storyChapterId} onChapterChange={setStoryChapterId} />}
             {page === "settings" && (
               <div className="page-content settings-page">
                 <section className="settings-card surface">
@@ -539,16 +548,12 @@ export default function App() {
                           disabled={studio.busy || studio.readingFile} options={DOCUMENT_MODES} />
                         {studio.documentMode === 'device' && <Select label="Ngôn ngữ tài liệu" value={studio.documentLang} onValueChange={studio.setDocumentLang}
                           disabled={studio.busy || studio.readingFile} options={OCR_LANGUAGES} />}
-                        <Button
-                          className="text-button"
-                          type="button"
+                        <FilePickerButton label={studio.readingFile ? 'Đang nhập…' : 'Nhập tệp'}
+                          inputLabel="Chọn tài liệu văn bản"
+                          accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,image/jpeg,image/png,image/webp"
                           title="PDF, DOCX, TXT, Markdown, ảnh scan · Tối đa 50 MB. Có thể kéo thả vào ô soạn thảo."
                           disabled={studio.busy || studio.readingFile}
-                          onClick={() => fileRef.current?.click()}
-                        >
-                          <Icon name="upload" size={15} />
-                          {studio.readingFile ? "Đang nhập…" : "Nhập tệp"}
-                        </Button>
+                          onFiles={files => { void studio.importFile(files[0]); }} />
                         <Button type="button" className="icon-button" aria-label="Chụp tài liệu" title="Chụp hoặc chọn ảnh để nhận dạng chữ"
                           disabled={studio.busy || studio.readingFile} onClick={() => cameraRef.current?.click()}>
                           <Icon name="camera" size={18} />
@@ -715,8 +720,14 @@ export default function App() {
                   <div className="setting-field">
                     <label htmlFor="language">{page === "translation" ? "Ngôn ngữ gốc" : "Ngôn ngữ"}</label>
                     <Select id="language" label={page === "translation" ? "Ngôn ngữ gốc" : "Ngôn ngữ"}
-                      value={studio.lang} onValueChange={studio.setLang} disabled={studio.busy || studio.readingFile || studio.loadingVoices}
-                      options={studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))} />
+                      value={studio.autoLanguage ? 'auto' : studio.lang} onValueChange={studio.setLang} disabled={studio.busy || studio.readingFile || studio.loadingVoices}
+                      options={[{ value: 'auto', label: 'Tự nhận diện' }, ...studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />
+                    {studio.autoLanguage && <small role="status">{studio.languageDetection?.status === 'detected'
+                      ? studio.languages.some(item => item.lang === studio.languageDetection?.language && item.voices.length)
+                        ? `Đã nhận diện: ${languageNames[studio.languageDetection.language || ''] || studio.languageDetection.language}`
+                        : 'Ngôn ngữ dự đoán chưa có giọng ở nguồn hiện tại. Hãy chọn thủ công.'
+                      : studio.languageDetection?.status === 'mixed' ? 'Văn bản có nhiều ngôn ngữ. Hãy chọn thủ công.'
+                      : studio.languageDetection?.status === 'uncertain' && studio.text.trim().length >= 12 ? 'Chưa xác định rõ ngôn ngữ' : ''}</small>}
                   </div>
                   {page === "translation" && (
                     <div className="setting-field">
@@ -948,7 +959,6 @@ export default function App() {
               <AudioPlayer
                 item={studio.currentAudio}
                 queue={studio.history}
-                languages={studio.languages}
                 onSelect={studio.openRecording}
                 onLibrary={() => navigate("library")}
                 volume={preferences.volume}
@@ -961,18 +971,6 @@ export default function App() {
           )}
         </div>
       </div>
-      <input
-        ref={fileRef}
-        type="file"
-        className="sr-only"
-        tabIndex={-1}
-        aria-label="Chọn tài liệu văn bản"
-        accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,image/jpeg,image/png,image/webp"
-        onChange={(e) => {
-          void studio.importFile(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
       {dialog === "voices" && (
         <Modal title="Chọn giọng đọc" onClose={closeDialog} className="voice-modal">
           {renderVoiceBrowser(true)}
@@ -983,6 +981,8 @@ export default function App() {
       {dialog === "menu" && (
         <Modal title="TTS Studio" onClose={closeDialog} className="mobile-nav-modal">
           <Sidebar drawer page={page} collapsed={false} count={studio.history.length}
+            storyChapters={storyChapters} storyProjectTitle={storyProjectTitle}
+            selectedChapterId={storyChapterId} onChapter={setStoryChapterId}
             onToggle={closeDialog} onNavigate={navigate} />
         </Modal>
       )}

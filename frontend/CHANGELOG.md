@@ -1,5 +1,120 @@
 # CHANGELOG — M4
 
+## 2026-11-16 — Tích hợp M5, hoàn thiện Audio Truyện trên web/app
+
+- Merge giữ lịch sử 22 commit M5 tới `48e7008` trên nền sửa tích hợp `5cb0fc8`. Tiếp nhận Audio Truyện, auto language ELD, TYPO-CORRECTION-02, batch và callback; không thay key/env hoặc triển khai AWS. `shared/story-client.ts` dùng chung CRUD/CAS, phân trang, upload phần, bản dịch, audio plan và backup; `story-translation-run.ts` điều phối dịch nhiều chương, dừng khi đóng/ẩn/ra nền.
+- Expo có nhập/chỉnh chương, xác nhận ngôn ngữ chương đầu, tên riêng/thuật ngữ, dịch và sửa/duyệt từng phần, dịch nhiều chương, chọn Azure/Gemini/giọng/tốc độ/sắc thái/cường độ, xác nhận batch, pause/resume/retry, nghe/tua/lưu từng MP3 và backup. Sheet dùng safe area/keyboard sẵn có, chuyển mục nhẹ theo reduced motion, giữ nháp khi yêu cầu đóng, cảnh báo Gemini trực tuyến và duyệt OCR trước khi thay chữ. Dùng lại xử lý ảnh 4 MP/2.400 px của TTS; tài liệu dài chia trang chỉnh 30.000 ký tự.
+- Web/app chia chương thành Nội dung/Bản dịch/Âm thanh; tạo truyện và tùy chọn thu gọn, giảm nhãn mô tả. Web ẩn danh sách khi mở truyện, chỉ cuộn khung nội dung tới chương. App dùng danh sách chương gọn, bảng chọn giọng và trình phát riêng trong sheet; không đẩy route dưới modal. Giữ kính, màu, chữ, chuyển động và sáng/tối hiện có. App nhập một tệp mỗi lần; nhập nhiều tệp/gộp MP3 vẫn trên web, không giả khả năng native.
+- Sửa root SAM bị lặp `GeminiTtsDailyCallLimit` ở TtsCore và thiếu ở Submit; truyền đúng mỗi stack một lần. Sửa duyệt nhiều phần dịch bị dính chữ ở ranh giới, giữ khoảng trắng đã có và thêm ngắt đoạn khi thiếu. Bổ sung regression về giới hạn, CAS, hủy, fingerprint, nguồn bản duyệt và backup không chứa URL ký; giữ toàn bộ bằng chứng lịch sử các owner.
+- **630 kiểm thử local PASS:** M1 38, M2 115, M3 65, M5 159, runtime 18, web 131, app 104. Web production build, app typecheck/lint, Expo export iOS/Android/web và cfn-lint sáu template PASS. Vite còn cảnh báo kích thước chunk hiện hữu.
+- **67 trường hợp Chrome PASS:** 31 luồng/bố cục TTS/preview/typo, 35 trường hợp Audio Truyện và một luồng gộp MP3. Bộ Audio Truyện chạy qua router/submit/worker/repository hiện có với Moto và HTTP provider giả: tạo chương, dịch/duyệt, tạo MP3 fixture mã hóa LAME, player, glossary, xuất/khôi phục bản dịch và xác nhận Auto; 24 bố cục Expo web và 8 bố cục web sáng/tối, rộng 320–1.440 px, gồm màn ngang. Không pageerror hoặc request provider thật. Đã xem ảnh và kiểm lại 8 bố cục web sau sửa cuộn. Tạo hai đoạn qua worker/Moto, gộp bằng LAME trên trình duyệt và giải mã file tải xuống: MP3 stereo 79.872 byte, 4,992 giây. Không gọi Azure/Gemini/AWS thật, chưa nghe giọng thật, chưa kiểm bàn phím/GlassView/âm thanh trên thiết bị native hoặc deploy Sandbox.
+- Cập nhật README, hợp đồng dịch truyện và AGENTS quy tắc thiết kế cho các lượt sửa tiếp theo; GUIDE cá nhân vẫn ignore. Giữ ba stash cũ. Đồng bộ Git không đồng nghĩa đã triển khai AWS hoặc đạt yêu cầu API Gateway/Polly/DynamoDB.
+
+## 2026-11-15 — Trạng thái kiểm tra chính tả (TYPO-CORRECTION-02)
+
+- Web/app phân biệt Gemini hết quota, timeout, chưa kiểm tra được và đã kiểm tra nhưng không thấy gợi ý; khi `skipped` tiếp tục bản gốc. Giữ màn duyệt hai bản và nút chọn hiện có.
+
+## 2026-11-15 — Tinh gọn thanh phát và màu hoàn tất truyện (coded)
+
+- Bỏ dòng phụ chứa tên giọng/ngôn ngữ dưới tên nội dung trên thanh phát cố định; giữ tên nội dung và các nút điều khiển.
+- Vòng tiến độ truyện ở trạng thái hoàn tất dùng xanh lá tươi hơn (`#22c55e`) cùng nền trong dịu.
+
+## 2026-11-15 — Gọn danh sách đoạn và tiến độ Audio Truyện (coded, locally tested)
+
+- Web hiển thị mỗi đoạn bằng thẻ gọn: số đoạn, độ dài và trích đầu → cuối; không thay source lưu trong chương. Vòng tiến độ chuyển xanh lá khi mọi chương có audio hoàn tất. Sidebar dùng nền xanh nhạt hơn và thêm tên truyện tách khỏi danh sách chương.
+- Kiểm local: 11/11 test Audio Truyện, web production build PASS. Chưa kiểm trực quan trên trình duyệt/thiết bị thật; M4 cần review màu sáng/tối.
+
+## 2026-11-15 — Danh sách chương và audio gộp (coded, locally tested)
+
+- Web đặt Audio Truyện cuối điều hướng, hiển thị chương trong ô cuộn dưới mục này, chọn chương đầu vừa nhập; tách Chỉnh chương khỏi đoạn đã lưu và tạo audio. Web/app khi đang RUNNING chỉ gọi tick bổ sung nếu còn đoạn chờ và không có job đang chạy; không phát lại trạng thái chưa rõ.
+- Web cho gộp và tải MP3 cả chương khi mọi đoạn DONE; mã hóa ở trình duyệt bằng lamejs, tối đa 60 phút, không ghi lên S3. Kiểm local: 11/11 test Audio Truyện, web build và app typecheck PASS. Chưa nghe thử file gộp hoặc kiểm trên thiết bị thật/Sandbox. M4 cần review UX/CORS và chi phí bộ nhớ trình duyệt.
+
+## 2026-11-15 — Bỏ quản lý nhân vật Audio Truyện (coded)
+
+- Gỡ block Nhân vật và quan hệ, màn duyệt Gemini, API client, kiểu dữ liệu và CSS liên quan khỏi web. Backup mới không xuất nhân vật; import backup cũ vẫn nhận dự án/chương và bỏ qua trường nhân vật cũ.
+- Kiểm local: web UI **129/129 PASS**, production build PASS (Vite vẫn cảnh báo chunk lớn). Chưa kiểm trực quan trên thiết bị; không deploy.
+
+## 2026-11-15 — Đồng bộ nút duyệt chính tả web/app (coded, locally tested)
+
+- Web và app dùng cùng thứ tự nút: **Giữ bản gốc → Dùng bản tự chỉnh → Dùng bản sửa**. Ban đầu **Dùng bản sửa** là nút xanh; khi người dùng sửa nội dung khác đề xuất, nút xanh chuyển sang **Dùng bản tự chỉnh**. Nếu nội dung trở lại đúng đề xuất, màu xanh trở lại **Dùng bản sửa**.
+- Giữ nguyên nội dung được gửi theo đúng nút đã chọn; không đổi luồng duyệt bản dịch. App bỏ dòng mô tả phụ để phần duyệt khớp với web.
+- Kiểm local: web UI **132/132 PASS**, production build PASS (Vite có cảnh báo hiện hữu về chunk lớn); app tests **95/95 PASS**, typecheck và lint PASS, Expo export iOS/Android PASS. Chưa kiểm trực quan trên thiết bị thật.
+
+## 2026-11-15 — Gọn nhập chương và tạo Audio Truyện (coded)
+
+- Nhập nhiều chương bỏ hai câu hướng dẫn lặp và nút “Nhận diện lại”; giữ “Tối đa 10 tệp” cạnh nút nhập, đổi nhãn thành “Ngôn ngữ” và thu gọn từng chương thành tên trước khi mở phần chỉnh sửa có nền riêng.
+- Gom khôi phục backup vào khối Dự án Audio Truyện. Tạo audio chương dùng một nút thao tác, còn ước tính Gemini và trạng thái được chia thành các ô ngắn. Mỗi MP3 có tên chương/đoạn và player nhỏ dùng chung phong cách nút, màu và thanh tua của web.
+- Đặt khôi phục backup phía trên danh sách truyện; giữ bộ đếm tệp cạnh nút nhập trên màn hẹp và tăng độ thoáng phần chọn ngôn ngữ. Khi polling làm mới URL ký S3 cho cùng MP3, player giữ nguyên nguồn đang phát; chỉ đổi nguồn khi sang tệp khác hoặc cần làm mới URL. Lỗi NOT_FOUND từ API ảnh bìa hiện hướng dẫn kiểm tra máy chủ local hoặc stack M1/M5.
+- Lỗi S3 ảnh bìa được phân biệt theo bucket, quyền, chữ ký và kích thước; API web/app trả NOT_FOUND được hướng dẫn kiểm tra route/máy chủ. Không tự deploy stack. Chưa chạy test/build hoặc kiểm chứng AWS thật trong lượt này.
+
+## 2026-11-15 — STORY-UI-01 ảnh bìa Audio Truyện (coded, locally tested)
+
+- Web/app cho chọn ảnh khi tạo project và thêm/thay/xóa sau đó; thumbnail đứng 2:3, placeholder sách, trạng thái lỗi và gia hạn URL một lần. Expo dùng `expo-image-picker` đã có; web tái sử dụng `FilePickerButton`. Web backup hỏi xác nhận khi ảnh không được đóng kèm; export loại cover và presigned URL khỏi JSON, import tạo project mới không ảnh.
+- Giới hạn client/backend: JPEG/PNG, 5 MiB; backend kiểm magic/headers và pixel 20 MP/10.000 px, không tin MIME do client khai báo. Upload trực tiếp qua presigned POST tới bucket private; local runtime dùng Moto bridge có HMAC để không gửi ảnh lên AWS.
+- Kiểm local: web **131/131 UI tests** và production build PASS; app **94/94 tests**, typecheck, lint và Expo export iOS/Android PASS. Local runtime **18/18**, M1 **37/37**, M3 **66/66**, M5 **135/135**. Chưa kiểm trực quan trên thiết bị, S3 CORS/retention hoặc upload CloudFront/Sandbox thật. Cần M1/M3/M5 review; không commit/push/deploy.
+
+## 2026-11-15 — Đồng bộ màu biểu tượng Công cụ trên app
+
+- Đổi màu icon và nền icon của **Dịch và đọc** và **Audio Truyện** sang xanh `#0072BC`, cùng màu với **Tạo giọng đọc**. Giữ nguyên bố cục, điều hướng và nội dung.
+- Không chạy test/build cho chỉnh sửa màu nhỏ này.
+
+## 2026-11-15 — AUTO-LANGUAGE-03: thay detector cũ bằng ELD (coded, locally tested)
+
+- Thử `franc` 6.2.0 (MIT) và ELD 2.1.1 (Apache-2.0) trên cùng câu ngắn Việt/Anh/Trung/Nhật/Hàn. `franc` nhầm ba câu Anh/Việt có tên riêng và không xác định câu Trung ngắn; chọn ELD small vì nhận đúng các mẫu này và tiếng Việt không dấu trong thử local. fastText `lid.176.ftz` là model nén, nhưng chưa có runtime `.ftz` được kiểm trên Expo Go; không đưa bản `.bin` 126 MB vào ứng dụng. Không thêm backend/Lambda/API/key.
+- Xóa từ điển từ vựng, regex chấm điểm và hàm heuristic cũ trong `frontend/shared/language-detection.ts`; giữ facade kiểu kết quả và thay bằng adapter ELD, mapping locale, quy tắc thận trọng cho mẫu ngắn/Hán tự mơ hồ/văn bản trộn. Web/Expo mỗi bên lazy-load `eld/small` đúng một lần; mẫu giới hạn 1.600 ký tự, kết quả cũ không ghi đè nội dung mới. Audio Truyện chỉ nhận diện lúc nhập chương đầu chưa xác nhận hoặc khi bấm Nhận diện lại.
+- Corpus độc lập 22 mẫu: detector cũ **22/22**, ELD mới **22/22** trên cùng bộ (bộ cũ đã được tối ưu cho một số mẫu này, nên không tuyên bố tăng độ chính xác chung). Node 26.5 local: lượt đầu khoảng **280 ms**, suy luận ấm khoảng **0,04 ms/mẫu**, chênh heap khoảng **61 MiB** trong tiến trình benchmark; chưa đo điện thoại thật. Web model chunk **1.606.234 byte**, gzip khoảng **464 KiB**, tải riêng khi cần; license Apache-2.0 được giữ trong web/app.
+- Web **130/130 tests** và production build PASS; Expo **93/93 tests**, typecheck/lint, export iOS/Android PASS. Bốn suite backend M1/M2/M3/M5 PASS; M1 có test bị skip do môi trường. Chưa kiểm CloudFront/Sandbox thật hoặc runtime native trên thiết bị; M4 cần review gói frontend trước deploy. Không commit/push/deploy.
+
+### Bổ sung Model Packaging & AWS Academy
+
+- Khóa model small theo `eld@2.1.1` trong cả hai lockfile: tarball `https://registry.npmjs.org/eld/-/eld-2.1.1.tgz` với SHA-512 integrity; file nguồn đã cài `node_modules/eld/src/ngrams/small.js`, 1.600.055 byte, SHA-256 `81df62f6b072f475b5b09e2cfa4a8ba4ab71eb99c713eb4b4ace461463180ab6`. Thêm `frontend/scripts/verify-eld-model.mjs`; `npm ci` chạy kiểm tra qua `prepare`, web build/dev và app start cũng xác minh trước khi chạy.
+- Mô phỏng clone sạch bằng bản sao frontend không chứa `node_modules`, `dist`, `.cache`, `.env.local` hoặc npm cache cũ. `npm ci` web/app với cache riêng đều PASS và in đúng SHA-256. Web production build PASS; model có trong `dist/assets/static.small-D_GE8V2-.js` (1.606.234 byte, gzip 464,46 KiB). Vite preview trả trang và chunk model HTTP 200 (chunk trả 1.606.234 byte). Expo export iOS/Android PASS; bundle JS Hermes lần lượt 7 MB/7,2 MB, model được đóng gói cùng bundle, không có file model cần copy riêng.
+- Kiểm tra quy trình deploy: `sandbox.sh web` chạy `npm ci`, build và `aws s3 sync dist` toàn bộ rồi invalidate CloudFront; asset model có trong cùng static output. Đây là bằng chứng build/package và mô phỏng host local, **chưa chạy lệnh AWS hoặc xác minh CloudFront/S3 của phiên thật**. Các thay đổi chưa commit/push/deploy.
+
+## 2026-11-15 — Gọn giao diện Expo Dịch và đọc / Audio Truyện (coded, locally tested)
+
+- Dịch và đọc trên Expo đặt Tự nhận diện ngay trong ô **Từ**; bỏ nút ngôn ngữ nguồn lặp phía trên. Tạo giọng đọc vẫn giữ một nút chọn ngôn ngữ. Khi chưa tải catalog, ô đích giữ lựa chọn thay vì hiện nhầm cùng ngôn ngữ nguồn.
+- Audio Truyện trên Expo bỏ dòng mô tả dài; thay ô nhập mã `vi-VN` bằng bộ chọn dùng tên tiếng Việt của cùng danh sách ngôn ngữ trên web. Tự nhận diện là một lựa chọn trong **Ngôn ngữ gốc**, gửi `und` theo contract hiện hành.
+- Expo tests **92/92 PASS**, typecheck và lint PASS. Chưa kiểm giao diện trực tiếp trên thiết bị.
+
+## 2026-11-15 — AUTO-LANGUAGE-02: nhận diện mặc định và submit ngay (coded, locally tested)
+
+- Bổ sung từ/cụm thông dụng để câu Anh có tên Việt và câu Việt có tên thương hiệu vẫn được nhận diện đúng; thêm bằng chứng cụm Trung văn, giữ kết quả không chắc chắn cho Hán tự mơ hồ. Heuristic offline, mẫu tối đa 1.600 ký tự, không gọi AI.
+- Web/Expo bật Auto cho phiên soạn mới, kiểm sau 320 ms và kiểm đồng bộ khi submit trước debounce. Dùng locale/giọng hợp lệ trong chính lượt bấm; giữ giọng tương thích, chọn giọng đầu tiên của cùng provider khi cần. Manual override khóa Auto; không gửi `und` cho TTS. Audio Truyện tiếp tục giữ ngôn ngữ project đã xác nhận.
+- Web tests **130/130 PASS**, build PASS; Expo tests **92/92 PASS**, typecheck và lint PASS. Có test dán rồi submit ngay, debounce/manual override, dịch chỉ mở bước duyệt, và các ví dụ Việt/Anh/Trung/Nhật/Hàn. Chưa thử giao diện trên thiết bị thật hoặc backend AWS.
+
+## 2026-11-14 — Audio Truyện: giao diện, nhân vật và giọng đích (coded, locally tested)
+
+- Web đổi ghi chú backup, ngày hiển thị, khoảng cách, panel khôi phục, nhóm nút dự án và form nhập/chỉnh chương; bỏ “Nhận diện lại” cùng chú giải dài trong audio. Thêm vòng tỷ lệ chương có audio đầy đủ, tối đa 50 chương/lượt. Dùng nhãn tiếng Việt cho sắc thái và giọng có tên chữ Hán.
+- Web có hồ sơ nhân vật, gán giọng dự kiến, ma trận quan hệ theo chương và màn duyệt từng đề xuất Gemini. Không tự gọi Gemini khi nhập file; chỉ lưu mục đã chọn. Backup mới chứa hồ sơ nhân vật, ánh xạ lại ID chương khi nhập; backup cũ vẫn đọc được. Không chứa MP3. Giọng dự kiến chưa dùng cho batch TTS.
+- Nếu ngôn ngữ đích dự án khác nguồn chương, web chọn giọng đích và gửi `translateTo` vào plan; backend yêu cầu Azure Translator, lỗi 503 nếu chưa cấu hình. M4 cần review UI, màn hình nhỏ, tính phù hợp của gán giọng trước khi deploy.
+- Kiểm local: web 128/128 UI tests, production build đạt; app 84/84 tests và typecheck đạt. Chưa kiểm trực quan trên thiết bị hoặc AWS/Azure/Gemini thật. Không commit/push/deploy.
+
+### Chỉnh tiếp giao diện theo ảnh phản hồi
+
+- Danh sách dự án hiện lại **ngôn ngữ gốc → ngôn ngữ đích** cạnh ngày, giảm khoảng cách dòng. Danh sách chương và trình chỉnh chương nằm cùng một block; hồ sơ nhân vật ở block riêng. Trạng thái `DRAFT` hiện **Bản nháp**, tiêu đề Chỉnh chương nhỏ hơn.
+- Gọn thẻ tạo audio, dùng nhãn **Giọng kể** và **Sắc thái giọng kể** để diễn đạt đúng batch một giọng/chương. Ưu tiên giọng có nhiều sắc thái trong catalog; tùy chọn tự nhận diện sắc thái áp dụng cho từng đoạn khi backend bật tính năng. Gọn mục nhân vật, ẩn nút Gemini khi chương chưa có chữ; lỗi 404 backend hiện ngắn và có nút thử lại. Khi duyệt Gemini hoặc thêm nhân vật, web tự gợi ý giọng từ catalog theo giới tính và tránh trùng giọng nếu có thể; người dùng vẫn đổi được. Gợi ý giọng chưa phải phân vai MP3.
+- Chỉnh chương thành thẻ con có nền, viền và bóng nằm trong block Chương đã lưu; hàng chương đang chọn có nền nhấn nhẹ. Cân lại chiều rộng ô tên/số chương, nút Đóng và nhập tệp, giảm chiều cao textarea trên màn lớn và xếp một cột trên mobile. Đổi nhãn thành **Thay đổi ngôn ngữ nguồn**. Kiểm riêng 2 UI tests liên quan, web build và `git diff --check` đạt; chưa đối chiếu bằng trình duyệt/thiết bị thật.
+
+## 2026-11-14 — AUTO-LANGUAGE-01 (coded, locally tested)
+
+- Thêm detector offline dùng mẫu tối đa 1.600 ký tự, từ khóa và dấu chữ viết; không thêm package, API, key hay model. Web/Expo thêm lựa chọn Tự nhận diện cho Tạo giọng đọc và Dịch và đọc; kết quả không chắc chắn cần chọn thủ công. Ngôn ngữ đích/giọng đích và nội dung không bị thay. Manual override khóa tự động cho bản nhập hiện tại.
+- Audio Truyện web cho tạo project chờ bằng `sourceLang=und`, nhận diện ở file chương đầu và yêu cầu xác nhận trước PATCH project/chapter. Chương sau kế thừa; nút Nhận diện lại là thao tác chủ động. Expo cho tạo project chờ và hướng dẫn hoàn tất nhập chương trên web. Đổi ngôn ngữ chương tăng revision, khiến plan cũ không còn hợp lệ.
+- Kiểm local: detector 15/15 trường hợp; web 124/124 UI tests và production build; app 84/84 tests, typecheck, lint, Expo export iOS/Android. Backend M1 chạy 37 tests (14 skipped), M2 114/114 qua `.venv` có `lameenc`, M3 60/60, M5 130/130. Chưa kiểm âm thanh, OCR hay giao diện trên thiết bị/Sandbox thật; M4 cần review trước triển khai. Không commit/push/deploy.
+
+## 2026-11-14 — Gọn giao diện Audio Truyện (coded, locally tested)
+
+- Bỏ câu mô tả dài ở đầu form; chỉ giữ ghi chú backup nhỏ ở góc. Form tạo dự án không còn nút chọn file; sau khi chọn dự án mới có nhập tài liệu/chương. Khôi phục backup nằm trong mục riêng thu gọn dưới danh sách dự án.
+- Tái sử dụng bộ chọn ngôn ngữ và tên tiếng Việt của Studio, dùng `cmn-CN` đúng catalog thay cho `zh-CN` ở dự án mới; dự án cũ mang `zh-CN` vẫn hiển thị tên dễ đọc. Tách một nút nhập file dùng chung cho Studio, nhập chương đơn và nhiều chương, giữ nguyên parser/giới hạn/upload.
+- Kiểm web local: 121/121 UI tests và production build đạt; chưa đối chiếu trực quan trên thiết bị hoặc CloudFront thật. M4 cần review giao diện trước khi triển khai. Không commit/push/deploy.
+
+## 2026-11-14 — STORY-01A Audio Truyện (coded, locally tested)
+
+- Web thêm trang Audio Truyện: project/chapter, nhập từng hoặc nhiều file TXT/MD/DOCX/PDF/ảnh, chỉnh sửa, xem segments, upload chunk 30.000 ký tự và xuất/nhập JSON backup. Studio TTS giữ giới hạn riêng; parser tài liệu chỉ nhận giới hạn 1.000.000 ký tự khi gọi từ Audio Truyện.
+- Expo thêm màn project/chapter cơ bản từ Công cụ; nhập file lớn/backup còn trên web. CloudFront forward `/audiobooks*` không cache tới M1. M4 cần review UI/mobile/hosting trước Sandbox.
+- Web 119/119 tests (gồm tạo/mở lại project/chapter, nhập nhiều file và retry sau lỗi upload), production build đạt; app 68/68 tests, typecheck, lint và Expo export iOS/Android đạt. Chưa kiểm trên thiết bị hoặc CloudFront thật. Local Moto trong RAM mất dữ liệu khi tắt backend; người dùng cần xuất backup.
+- Sửa retry khi PATCH thứ tự thành công rồi upload lỗi: giữ revision mới trong bản nháp. Trình chỉnh chương giữ nội dung đang sửa khi lưu metadata thành công nhưng upload lỗi, sau đó retry đúng revision; đóng trình chỉnh sẽ tải lại danh sách.
+
 Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời điểm ghi. Đường dẫn hiện hành, nhiệm vụ và lệnh chạy xem [README](README.md).
 
 

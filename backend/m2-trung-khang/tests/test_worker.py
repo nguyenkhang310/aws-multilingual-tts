@@ -190,6 +190,14 @@ class WorkerTest(unittest.TestCase):
         self.assertEqual(self.run_worker()["status"], "DONE")
         self.assertEqual(self.saved()["attempt"], 2)
 
+    def test_explicitly_retry_safe_provider_error_is_saved_for_manual_retry(self):
+        self.seed()
+        error = TransientProviderError("PROVIDER_BUSY", "Bận", retry_safe=True, retry_after_seconds=30)
+        self.assertEqual(self.run_worker(failing(error))["status"], "FAILED")
+        self.assertTrue(self.saved()["retryable"])
+        self.assertEqual(self.saved()["retryAfterSeconds"], 30)
+        self.assertIsNone(self.saved()["leaseUntil"])
+
     def test_explicit_final_attempt_fails_job_with_safe_provider_message(self):
         self.seed()
         error = TransientProviderError("PROVIDER_TIMEOUT", "Kết nối Azure Speech quá thời gian chờ.")

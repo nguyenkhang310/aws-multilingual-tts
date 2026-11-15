@@ -1,5 +1,8 @@
 # M5 — Trung Nghĩa: Submit, điều phối async, ngôn ngữ và kiểm thử
 
+STORY-01A dùng `submit/audiobooks.py` làm handler riêng cho project/chapter/segment; Lambda submit hiện có tái sử dụng Common Layer M3 và jobs bucket, không tạo job TTS hoặc gọi provider. Web có upload chunk/backup, app quản lý cơ bản. M5 cần review validation/error, M3 review storage và M1/M4 review wiring trước deploy. [Hợp đồng](../../docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+STORY-UI-01 thêm route M5 `POST /audiobooks/{id}/cover-upload`, `POST/GET/DELETE /audiobooks/{id}/cover`; route chỉ chuyển upload ticket/xác nhận/xem/xóa qua M3. Ảnh được xác minh ở M3, không đưa bytes ảnh vào Lambda body hoặc project JSON. M1/M3/M4 cần review trước Sandbox. [Hợp đồng ảnh bìa](../../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
+
 **Cập nhật 2026-11-09.** Submit và test M5 đã có code trên main qua commit tích hợp của M2; M5 cần review và nhận bàn giao. Gemini typo/dịch, stats, `Idempotency-Key`, recovery và đường tích hợp M1→M5→M3/M2 đã có code/test local trong working tree; chưa kiểm chứng Sandbox hoặc deploy. Gemini vẫn tắt mặc định trên AWS. Task chỉ tick khi owner kiểm kết quả theo acceptance.
 
 **Cần chốt với giảng viên:** đề yêu cầu API Gateway/Polly/DynamoDB, còn bản Sandbox đang dùng dịch vụ thay thế. Xem [đối chiếu yêu cầu](../../AGENTS.md#3-yêu-cầu-đề-bài-và-trạng-thái-phải-diễn-đạt-đúng); không tự đổi hạ tầng khi chưa có môi trường/quyền và phân công mới.
@@ -143,6 +146,19 @@ Mặc định tắt, `GEMINI_OCR_MODEL=gemini-3.5-flash-lite`, `OCR_DAILY_CALL_L
 ## Bàn giao Gemini TTS — 13/11/2026
 
 `/synthesize` nhận provider tùy chọn, mặc định vẫn nguồn TTS cấu hình trước. Kiểm key-reference/cờ/voice/lang/style trước quota/job; giữ 202, event IDs-only, replay và cảnh báo dispatch không chắc chắn. Fingerprint chỉ thêm provider khi request có trường đó, giữ tương thích caller cũ. Gemini auto là hướng dẫn trực tiếp cho TTS, không gọi Gemini phân tích thứ hai hoặc giả resolvedStyle. Test `test_gemini_tts.py` nối submit/worker/history bằng fixture M3; M5 review idempotency, validation/quota và nghiệm thu Sandbox. Log tích hợp M4, giữ lịch sử owner. [Hợp đồng](../../docs/CONVENTIONS.md#gemini-tts-tùy-chọn--bổ-sung-13112026).
+
+## STORY-01B — Tạo audio theo chương
+
+`submit/story_plan.py` lập plan từ segment đã lưu trong M3, một voice cho cả chương. Mặc định đọc ngôn ngữ nguồn; khi web gửi `translateTo` khớp ngôn ngữ đích dự án, worker dùng Azure Translator hiện có rồi đọc bằng giọng đích, báo 503 nếu chưa cấu hình. `story_runner.py` cấp tối đa một item mỗi lần gọi qua logic Submit hiện có; M3 CAS slot giới hạn đồng thời cho cùng project, mặc định 1 và có thể cấu hình tối đa 2. `story_progress.py` đối chiếu queue với idempotency mapping, job và audio thật; trạng thái chưa rõ không được tự gửi lại. Quota ký tự được reserve ở Submit, Gemini call quota do worker M2 kiểm cuối cùng. STORY-01C bổ sung callback M2 để cấp tiếp khi worker hoàn tất; vì vậy bình thường không cần trình duyệt mở giữa các đoạn. [Hợp đồng STORY-01B](../../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026).
+
+## STORY-01C — Điều khiển và đối soát batch (implemented local, headless partial)
+
+`submit/story_control.py` cung cấp Pause, Resume và Retry an toàn cho từng segment. Ý định pause/resume và lease điều phối dùng M3 CAS; job đã gửi vẫn được phép hoàn tất. Resume xác minh lại revision, đối chiếu queue/job/idempotency và quota; retry chỉ nhận job `FAILED` có `retryable=true`, sau `nextRetryAt`, dưới `STORY_MAX_ATTEMPTS` (mặc định 3). Mỗi lần retry có idempotency key mới theo số attempt. `UNCERTAIN` không được gửi lại tự động. Lỗi quota/throttle và cấu hình/provider dùng chung bị chặn sẽ dừng cấp đoạn mới; lỗi riêng một segment được ghi nhận để những đoạn còn lại vẫn có thể xử lý. `story_run_recovery.py` đối chiếu trạng thái job với object audio, cập nhật queue/slot bằng CAS và không refund quota theo phỏng đoán.
+
+M2 có đúng một `EventInvokeConfig`; OnSuccess/OnFailure gửi Lambda destination về M5. `submit/story_events.py` kiểm tra job/context, nhận completion để đối soát rồi gọi một lượt dispatcher kế tiếp. Failure destination chỉ redrive một lần khi job còn `PENDING`, chưa claim (`attempt=0`, không lease); tình huống khác được đánh dấu cần kiểm tra. Web/Expo có nút Pause/Resume/Retry và chỉ poll để hiển thị tiến độ.
+
+Giới hạn nghiệm thu: callback mô phỏng trong fake Lambda cho thấy batch tiếp tục khi client đóng, nhưng chưa xác minh giao destination/permission trên AWS Academy. Không có scheduler/reconciler định kỳ độc lập; nếu callback bị mất hoặc Lab dừng, người vận hành cần dùng route `/tick` đã có (yêu cầu demo token, CAS/quota, tối đa một item mỗi lần) sau khi đối soát. Resume dành cho run đã Pause/Blocked, không thay thế `/tick` khi run vẫn RUNNING. Do đó headless tự hồi phục đầy đủ chưa đạt; trạng thái là **implemented local, headless partial**, chưa deployable/AWS verified. Xem route, trạng thái và giới hạn trong [hợp đồng STORY-01C](../../docs/CONVENTIONS.md#audio-truyện-story-01c--pause-resume-retry-và-headless-15112026).
+
 
 ## TTS-INTEGRATION-03 — Azure preview và duyệt chính tả
 

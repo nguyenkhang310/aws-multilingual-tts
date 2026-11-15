@@ -48,7 +48,7 @@ function useStudioState() {
   const [selection, setSelection] = useState({ lang: 'vi-VN', voice: 'Linh' });
   const selectedLanguage = languages.find(l => l.lang === selection.lang) ?? languages.find(l => l.lang === 'vi-VN') ?? languages[0];
   const lang = selectedLanguage?.lang ?? selection.lang;
-  const voice = selectedLanguage?.voices.some(v => v.id === selection.voice) ? selection.voice : selectedLanguage?.voices[0]?.id ?? '';
+  const voice = selection.voice === '' ? '' : selectedLanguage?.voices.some(v => v.id === selection.voice) ? selection.voice : selectedLanguage?.voices[0]?.id ?? '';
   const [loadingVoices, setLoadingVoices] = useState(!DEMO);
   const [voiceError, setVoiceError] = useState('');
   const voiceRequest = useRef(0);
@@ -147,7 +147,7 @@ function useStudioState() {
       if (!first) throw new Error('Máy chủ chưa có giọng đọc. Hãy tải lại sau.');
       connected.current = true;
       setLanguages(result); setVoiceError('');
-      setSelection(previous => result.some(l => l.lang === previous.lang && l.voices.some(v => v.id === previous.voice))
+      setSelection(previous => result.some(l => l.lang === previous.lang && (previous.voice === '' || l.voices.some(v => v.id === previous.voice)))
         ? previous : { lang: first.lang, voice: first.voices[0].id });
       return true;
     } catch (error) {
@@ -184,7 +184,7 @@ function useStudioState() {
     }
     setPreferences(p => ({ ...p, ...patch }));
   };
-  const selectVoice = (lang: string, voice: string) => setSelection({ lang, voice });
+  const selectVoice = useCallback((lang: string, voice: string) => setSelection({ lang, voice }), []);
   const saveRecording = async (recording: Recording) => {
     const next = [recording, ...historyRef.current.filter(r => r.jobId !== recording.jobId)].slice(0, 200);
     if (DEMO && !await persist(KEYS.recordings, next)) throw new Error('Chưa lưu được bản thu. Hãy kiểm tra dung lượng máy rồi thử lại.');

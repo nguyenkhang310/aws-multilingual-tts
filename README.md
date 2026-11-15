@@ -48,6 +48,7 @@ Repository được tổ chức theo trách nhiệm của năm thành viên. Fro
 | Gemini TTS tùy chọn | Gemini 3.8 Flash TTS; 30 giọng, 71 lựa chọn ngôn ngữ/vùng, sắc thái cụ thể hoặc tự chọn theo nội dung. Có hai MP3 local qua Gemini thật; các tổ hợp còn lại và Sandbox chưa nghiệm thu. [Bật local](deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng). |
 | Nhập tài liệu và OCR | Có trong Tạo giọng đọc và Dịch và đọc, mỗi trang giữ nội dung riêng. PDF, DOCX, TXT, Markdown và ảnh JPG/PNG/WebP; tối đa 50 MB, 200.000 ký tự và 50.000 từ. Hai chế độ: Gemini qua backend (đọc ảnh, duyệt chữ trước khi dùng) hoặc OCR tại thiết bị. Cần bật Gemini ở backend; không tự fallback. |
 | Tài liệu dài | Chia thành các bản thu tối đa 10.000 ký tự; chọn từng phần hoặc tạo tuần tự, dừng khi gặp lỗi/quota. Chưa kiểm chứng trên Sandbox/điện thoại thật. |
+| Audio Truyện | Có code quản lý dự án → chương → đoạn, queue batch lưu ở S3, MP3 theo từng đoạn, Pause/Resume/Retry và ảnh bìa. Completion callback có thể cấp tiếp khi client đóng; chưa có scheduler độc lập nếu callback bị mất. Chưa deploy/kiểm Sandbox. |
 | Phát và tải âm thanh | MP3 dùng URL có hạn; player web lấy thời gian từ tệp, hỗ trợ tạm dừng, tua, lặp lại và điều chỉnh âm lượng. |
 | Lịch sử bản thu | Có danh sách, phân trang, phát lại và xóa bản thu đã kết thúc. Dữ liệu hiện dùng chung cho scope demo. |
 | Giao diện | Tiếng Việt, sáng/tối/theo hệ thống, giảm chuyển động và tăng tương phản; thiết kế kính trên web và app. |
@@ -57,6 +58,8 @@ Repository được tổ chức theo trách nhiệm của năm thành viên. Fro
 | Thống kê đầy đủ | M5 đã có code quét job S3 có giới hạn; chưa xác minh trên bucket Sandbox thật. |
 
 Code, kiểm thử local và demo trong một phiên là các mức bằng chứng khác nhau. Khả năng tạo mới toàn bộ stack, dựng lại sau reset và hoạt động trên thiết bị thật cần được kiểm riêng. Trạng thái và tiêu chí nghiệm thu của từng phần nằm trong README/CHANGELOG của thành viên.
+
+**Dùng Audio Truyện:** mở mục **Audio Truyện** trên web, tạo dự án và chọn ngôn ngữ, thêm chương hoặc chọn nhiều file để duyệt rồi lưu. Nút khôi phục backup nằm phía trên danh sách tên truyện trong cùng khối dự án. Chọn tên truyện để mở thông tin; mở chương để sửa nội dung, chọn giọng/sắc thái rồi bấm **Tạo audio chương**; xác nhận để tạo MP3 theo đoạn. Khi batch chạy có thể Pause rồi Resume; đoạn FAILED đủ điều kiện có thể Retry, còn UNCERTAIN cần được kiểm tra. Callback worker thường cấp tiếp khi web/app đã đóng, nhưng chưa có scheduler độc lập nếu callback bị mất. Muốn đọc bằng ngôn ngữ đích khác nguồn cần cấu hình Azure Translator. Chọn **Xuất backup** trước khi kết thúc Lab; **Nhập backup** tạo dự án mới với ID mới. Backup không gồm MP3 hoặc ảnh bìa. App Expo có nhập/chỉnh chương, dịch và duyệt, chọn giọng/sắc thái, batch, nghe/chia sẻ từng đoạn và backup. Mỗi chương chia thành Nội dung, Bản dịch, Âm thanh; nhập nhiều file một lượt và gộp MP3 vẫn thuộc web. Backup cũ có trường nhân vật vẫn nhập được nhưng trường đó bị bỏ qua. [Hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
 
 ## Kiến trúc
 
@@ -304,6 +307,7 @@ Các đường dẫn được giữ thống nhất giữa web, app và router. R
 | POST | `/text/correct` | Gemini đề xuất lỗi đánh máy khi bật, lỗi trả nguyên văn bản | M5 |
 | POST | `/text/translate` | Dịch một đoạn theo ngữ cảnh khi bật; không tự tạo job TTS | M5 |
 | GET | `/stats` | Thống kê job trong S3; vượt giới hạn trả 503 | M5 |
+| GET/POST/PATCH/PUT/DELETE | `/audiobooks*` | Quản lý truyện/chương/segment và [batch MP3 theo chương](docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026); queue lưu backend, cấp đoạn mới khi client gọi tick | M1/M2/M3/M4/M5 |
 
 Trạng thái job: `PENDING → PROCESSING → DONE | FAILED`. Lỗi dùng cùng cấu trúc:
 

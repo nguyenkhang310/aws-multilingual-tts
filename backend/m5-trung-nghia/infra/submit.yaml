@@ -33,6 +33,20 @@ Parameters:
     Type: Number
     Default: 30000
     MinValue: 1
+  StoryMaxActive:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 2
+  StoryMaxAttempts:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 3
+  StoryHeadlessEnabled:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
   TtsProvider:
     Type: String
     Default: azure
@@ -61,6 +75,11 @@ Parameters:
     Type: String
     Default: gemini-3.8-flash-tts
     AllowedValues: [gemini-3.8-flash-tts]
+  GeminiTtsDailyCallLimit:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    MaxValue: 10000
   GeminiEmotionEnabled:
     Type: String
     Default: 'false'
@@ -111,9 +130,14 @@ Parameters:
     MaxValue: 5000
   TypoMaxChanges:
     Type: Number
-    Default: 5
+    Default: 12
     MinValue: 1
     MaxValue: 20
+  StoryTranslationDailyChars:
+    Type: Number
+    Default: 100000
+    MinValue: 1000
+    MaxValue: 10000000
   TypoDailyCallLimit:
     Type: Number
     Default: 100
@@ -147,6 +171,9 @@ Resources:
           MAX_CHARS: !Ref MaxChars
           DEFAULT_SPEED: !Ref DefaultSpeed
           DAILY_CHAR_LIMIT: !Ref DailyCharLimit
+          STORY_MAX_ACTIVE: !Ref StoryMaxActive
+          STORY_MAX_ATTEMPTS: !Ref StoryMaxAttempts
+          STORY_HEADLESS_ENABLED: !Ref StoryHeadlessEnabled
           TTS_PROVIDER: !Ref TtsProvider
           AZURE_SPEECH_REGION: !Ref AzureSpeechRegion
           TRANSLATOR_API_PARAMETER_NAME: !Ref TranslatorApiParameterName
@@ -157,16 +184,34 @@ Resources:
           GEMINI_TYPO_ENABLED: !Ref GeminiTypoEnabled
           GEMINI_TTS_ENABLED: !Ref GeminiTtsEnabled
           GEMINI_TTS_MODEL: !Ref GeminiTtsModel
+          GEMINI_TTS_DAILY_CALL_LIMIT: !Ref GeminiTtsDailyCallLimit
           GEMINI_EMOTION_ENABLED: !Ref GeminiEmotionEnabled
           GEMINI_API_PARAMETER_NAME: !Ref GeminiApiParameterName
           GEMINI_MODEL: !Ref GeminiModel
           GEMINI_TRANSLATION_ENABLED: !Ref GeminiTranslationEnabled
           GEMINI_TRANSLATION_TIMEOUT_SECONDS: !Ref GeminiTranslationTimeoutSeconds
           TRANSLATION_DAILY_CALL_LIMIT: !Ref TranslationDailyCallLimit
+          STORY_TRANSLATION_DAILY_CHARS: !Ref StoryTranslationDailyChars
           GEMINI_TIMEOUT_SECONDS: !Ref GeminiTimeoutSeconds
           TYPO_CHECK_MAX_CHARS: !Ref TypoCheckMaxChars
           TYPO_MAX_CHANGES: !Ref TypoMaxChanges
           TYPO_DAILY_CALL_LIMIT: !Ref TypoDailyCallLimit
+
+  SubmitEventInvokeConfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      FunctionName: !Ref SubmitFunction
+      Qualifier: $LATEST
+      MaximumRetryAttempts: 1
+      MaximumEventAgeInSeconds: 300
+
+  WorkerFailureDestinationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SubmitFunction
+      Action: lambda:InvokeFunction
+      Principal: lambda.amazonaws.com
+      SourceArn: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:tts-synthesize-${Env}"
 
   StatsFunction:
     Type: AWS::Serverless::Function

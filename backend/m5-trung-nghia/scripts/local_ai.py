@@ -87,9 +87,9 @@ class LocalAiHandler(BaseHTTPRequestHandler):
         payload = {"status": "skipped", "language": lang, "hasTypos": False,
                    "originalText": text, "correctedText": text, "changes": []}
         try:
-            cfg = {"model": self.model, "timeout": 8, "maxChanges": 5}
+            cfg = {"model": self.model, "timeout": 8, "maxChanges": 12}
             result = correction._provider(text, lang, cfg, self.key)
-            corrected, changes = correction.reviewable_suggestion(text, result, 5)
+            corrected, changes = correction.reviewable_suggestion(text, result, 12)
             payload.update(status="checked", hasTypos=bool(changes),
                            correctedText=corrected, changes=changes)
         except Exception as error:

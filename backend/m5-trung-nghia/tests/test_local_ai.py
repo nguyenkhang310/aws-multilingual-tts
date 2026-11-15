@@ -43,7 +43,7 @@ class LocalBridgeTest(unittest.TestCase):
     def test_local_bridge_offers_safe_vietnamese_edits_for_review(self):
         handler = self.handler("/text/correct")
         handler.key, handler.model = "fake-key", "gemini-3.5-flash-lite"
-        suggestion = {"correctedText": "xin chào, hôm nay chúng ta sẽ ăn gì", "changes": []}
+        suggestion = {"correctedText": "xin chào, hôm nay chúng ta sẽ ăn gì"}
         with mock.patch.object(submit.correction, "_provider", return_value=suggestion) as provider:
             handler._correct({"text": "xin chèo, hom nay chún ta se ăn gì", "lang": "vi-VN"})
         status, body = handler._respond.call_args.args

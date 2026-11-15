@@ -17,6 +17,7 @@ function Navigator() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: reducedMotion ? 'none' : 'slide_from_right' }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="compose" options={{ presentation: 'fullScreenModal', animation: reducedMotion ? 'none' : 'slide_from_bottom' }} />
+      <Stack.Screen name="audiobooks" />
       <Stack.Screen name="recording" options={{ presentation: 'modal', animation: reducedMotion ? 'none' : 'slide_from_bottom' }} />
       <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
       <Stack.Screen name="help" />

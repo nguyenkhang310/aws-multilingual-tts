@@ -12,6 +12,7 @@
     "@tesseract.js-data/jpn": "1.0.0",
     "@tesseract.js-data/kor": "1.0.0",
     "@tesseract.js-data/vie": "1.0.0",
+    "eld": "2.1.1",
     "expo": "~58.0.23",
     "expo-asset": "~58.0.20",
     "expo-audio": "~58.0.11",
@@ -67,7 +68,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "test": "node --import tsx --test tests/*.test.ts",
-    "prepare": "node scripts/build-pdf.mjs"
+    "verify:language-model": "node ../scripts/verify-eld-model.mjs app",
+    "prepare": "node scripts/build-pdf.mjs && npm run verify:language-model",
+    "prestart": "npm run verify:language-model",
+    "preios": "npm run verify:language-model",
+    "preandroid": "npm run verify:language-model",
+    "preweb": "npm run verify:language-model"
   },
   "private": true,
   "overrides": {

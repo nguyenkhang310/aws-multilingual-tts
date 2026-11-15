@@ -6,7 +6,7 @@ import { useStudio } from '../../state/Studio';
 
 const tools: { title: string; icon: IconName; mode: string; color: string }[] = [
   { title: 'Tạo giọng đọc', icon: 'wave', mode: 'speech', color: '#0072BC' },
-  { title: 'Dịch và đọc', icon: 'translate', mode: 'translation', color: '#88709B' },
+  { title: 'Dịch và đọc', icon: 'translate', mode: 'translation', color: '#0072BC' },
 ];
 export default function Tools() {
   const { colors } = useStudio();
@@ -17,6 +17,12 @@ export default function Tools() {
       <View style={{ flex: 1 }}><Label size={19} weight="600">{tool.title}</Label></View>
       <Icon name="next" size={17} color={colors.secondary} />
     </Pressable>)}
+    <Pressable accessibilityRole="button" onPress={() => router.push('/audiobooks')}
+      style={[styles.tool, { backgroundColor: colors.surface, borderColor: colors.line }]}>
+      <View style={[styles.art, { backgroundColor: '#0072BC15' }]}><Icon name="book" color="#0072BC" size={31} /></View>
+      <View style={{ flex: 1 }}><Label size={19} weight="600">Audio Truyện</Label></View>
+      <Icon name="next" size={17} color={colors.secondary} />
+    </Pressable>
     <Pressable accessibilityRole="button" onPress={() => router.push('/help')} style={[styles.row, { borderColor: colors.line }]}>
       <Icon name="help" size={25} color={colors.secondary} /><Label style={{ flex: 1 }} weight="500">Hướng dẫn</Label><Icon name="next" size={16} color={colors.secondary} /></Pressable>
   </Page>;

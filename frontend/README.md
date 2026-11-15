@@ -1,5 +1,17 @@
 # M4 — Nguyên Khang: Frontend hiện có, CloudFront hosting và tái triển khai
 
+STORY-01A thêm trang **Audio Truyện** trên web để tạo dự án/chương, nhập nhiều file, chỉnh nội dung, xem segment và xuất/nhập backup. Expo thêm màn quản lý dự án/chương cơ bản từ Công cụ; nhập file lớn và backup dùng web. CloudFront forward `/audiobooks*` tới M1, không cache. M4 cần review UI, parser, mobile và behavior trước deploy. [Hợp đồng](../docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+
+STORY-01B thêm chọn provider/voice/speed/style trong web Audio Truyện, duyệt plan rồi start batch, xem progress và nghe từng đoạn DONE. Web chọn giọng ngôn ngữ đích của dự án; nếu khác ngôn ngữ chương thì plan yêu cầu Azure Translator qua backend, chưa cấu hình sẽ báo lỗi trước khi tạo audio. Web/app khi đang mở tự gọi tick nếu còn đoạn chờ và không có job active; callback STORY-01C tiếp tục cấp đoạn khi trang đóng, nhưng cần kiểm destination trên AWS thật. Web cho gộp MP3 đã hoàn tất ngay trên thiết bị, không lưu bản gộp vào backend. M4 cần review trạng thái lỗi, phân trang, CORS tải MP3 và nghiệm thu thiết bị thật. [Hợp đồng batch](../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026).
+
+Web Audio Truyện tạo dự án bằng tên/ngôn ngữ trước; sau khi mở dự án mới nhập tài liệu để tạo chương. Các ô ngôn ngữ dùng tên tiếng Việt và bộ chọn đang có của Studio; `cmn-CN` là mã tiếng Trung giản thể trong catalog TTS. Nút nhập file dùng chung với Tạo giọng đọc/Dịch và đọc. Khôi phục backup nằm trong cùng khối danh sách dự án. Một nút **Tạo audio chương** tạo kế hoạch theo cấu hình hiện tại, hỏi xác nhận rồi bắt đầu batch; các lần tạo trước được thu gọn trong tiến độ. MP3 theo đoạn có tên tệp và player riêng. Vòng tiến độ biểu thị tỷ lệ chương có audio đầy đủ, không phải tỷ lệ nội dung truyện đã viết; chỉ tính tối đa 50 chương một lượt.
+
+Backup Audio Truyện chỉ chứa metadata dự án, chương và nội dung; không chứa MP3 hoặc ảnh bìa. Khi nhập backup cũ có trường nhân vật, trường đó được bỏ qua để tương thích.
+
+STORY-UI-01 thêm ảnh bìa tùy chọn trong form tạo và trang dự án trên web/app. Chỉ JPEG/PNG tối đa 5 MiB; ảnh tải trực tiếp từ client lên URL ký của S3 Jobs bucket. Metadata chỉ lưu object key; response đọc kèm presigned GET 15 phút. Danh sách dùng thumbnail đứng 2:3; URL lỗi được xin lại một lần. JSON backup không mang ảnh/URL; web hỏi xác nhận và nhắc tải lại ảnh sau import. Expo dùng `expo-image-picker` đã có trong SDK hiện hành; chưa kiểm giao diện native hoặc upload trên thiết bị/AWS thật. [Hợp đồng ảnh bìa](../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
+
+Auto Language (local/offline): **Tự nhận diện** bật mặc định cho phiên Tạo giọng đọc và Dịch và đọc mới trên web/Expo. Engine thống kê [ELD 2.1.1](https://github.com/nitotm/efficient-language-detector-js) chạy tại thiết bị; không gọi Gemini/Azure hay Lambda để nhận diện. Nguồn model là `eld@2.1.1` trong `node_modules/eld/src/ngrams/small.js` (1.600.055 byte, SHA-256 được kiểm bởi `frontend/scripts/verify-eld-model.mjs`). Model không commit riêng: `npm ci` lấy tarball có URL và SHA-512 cố định trong lockfile, còn bước `prepare` kiểm hash model. Web đóng gói model thành `dist/assets/static.small-<hash>.js`; Expo đưa model vào JS bundle. Khi chạy, web tải chunk từ cùng CloudFront/S3 của website khi nhận diện lần đầu; không phụ thuộc CDN/model host bên ngoài. Văn bản nhập, dán hoặc tải tệp được kiểm sau 320 ms; nút tạo giọng cũng kiểm nội dung mới nhất ngay. Khi engine chưa chắc chắn, văn bản trộn ngôn ngữ hoặc nguồn giọng hiện tại không hỗ trợ locale dự đoán, người dùng chọn thủ công. Lựa chọn thủ công được giữ tới khi bật lại Auto hoặc mở phiên soạn mới. Giọng tương thích được giữ, giọng không tương thích dùng giọng đầu tiên của cùng nguồn. `en-US`, `cmn-CN` và `zh-TW` là locale mặc định khi model xác định họ ngôn ngữ; cần kiểm tra vùng/giọng. Audio Truyện giữ `sourceLang=und` khi chọn Auto, nhận diện mẫu của chương đầu rồi yêu cầu xác nhận; các chương sau kế thừa ngôn ngữ project. Chạy benchmark offline bằng `cd frontend/app && node --import tsx scripts/benchmark-language.mts`. Expo hiện quản lý metadata, chưa nhập chương/backup.
+
 **Cập nhật 2026-11-09.** M4 có web/app, hosting CloudFront và log cập nhật một stack/web hiện có sang Azure Speech. M4 phụ trách tích hợp giao diện và hosting; adapter/worker TTS vẫn do M2 sở hữu. Màn dịch tài liệu mới đã có code local, cần M4 review và thử với backend/thiết bị thật. Kiểm lại khả năng tạo stack mới, OAC, app native và reset trước khi tick thêm task.
 
 **Cần chốt với giảng viên:** đề yêu cầu API Gateway/Polly/DynamoDB, còn bản Sandbox đang dùng dịch vụ thay thế. Xem [đối chiếu yêu cầu](../AGENTS.md#3-yêu-cầu-đề-bài-và-trạng-thái-phải-diễn-đạt-đúng); không tự đổi hạ tầng khi chưa có môi trường/quyền và phân công mới.
@@ -10,7 +22,7 @@ Nhận route/URL/policy từ M1, catalog/limits từ M2, jobs/history/cursor/pre
 
 | File/thư mục trong module | Làm việc gì |
 |---|---|
-| `web/src/components/` | Control, sidebar, modal và AudioPlayer dùng chung. |
+| `web/src/components/` | Control, sidebar, modal, AudioPlayer và player đoạn truyện. |
 | `web/src/hooks/` | Luồng studio, theme, sidebar motion và usePlayback. |
 | `web/src/lib/` | API, types, dữ liệu và đọc tài liệu. |
 | `web/src/views/` | Trang tổng quan; các màn khác hiện nằm trong App.tsx. |
@@ -108,6 +120,8 @@ npm run dev
 ```
 
 Web cần Node ≥20.19. `npm run build` tạo dist; `npm run test:ui` chạy kiểm thử local. Upload từ CloudShell bằng `bash deployment/scripts/sandbox.sh web` ở gốc repo, script tự lấy domain/bucket từ Outputs; không cần quy trình ZIP hosting riêng.
+
+Clone mới tự cài và kiểm chứng ELD trong `npm ci`; có thể kiểm lại rõ ràng trước build bằng `npm run verify:language-model`. Quy trình deploy web `sandbox.sh web` tự chạy `npm ci`, build rồi đồng bộ toàn bộ `dist/` lên S3, nên chunk model được tải lên cùng các asset khác. Chỉ cần chạy thử ứng dụng; không chép model thủ công.
 
 Vite đọc `VITE_API_BASE_URL` lúc khởi động dev server và lúc build. Đổi env cần mở lại dev server/build. **Dịch và đọc** dùng Azure Translator rồi nguồn TTS đã chọn; không có giao diện dịch văn bản bằng Gemini. Gemini TTS là lựa chọn tạo giọng riêng từ ngày 13/11/2026, độc lập OCR/dịch/typo; [cấu hình backend](../deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng).
 

@@ -6,10 +6,12 @@ from abc import ABC, abstractmethod
 class ProviderError(Exception):
     """Lỗi provider đã làm sạch; message an toàn để ghi vào job."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, retry_safe=False, retry_after_seconds=None):
         super().__init__(code)
         self.code = code
         self.message = message
+        self.retry_safe = bool(retry_safe)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class PermanentProviderError(ProviderError):

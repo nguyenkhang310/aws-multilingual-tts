@@ -5,6 +5,8 @@ job, không đi trong event. AWS có thể gửi một event nhiều lần, nên
 job bằng CAS trước khi gọi provider. Module sở hữu: M2.
 """
 
+import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -15,7 +17,7 @@ from providers.translation import translate
 from providers.mp3 import join_mp3
 from providers.emotion import detect_style
 from registry import find_entry
-from tts_common import config, db, storage
+from tts_common import aws, config, db, storage
 from tts_common.errors import log_json
 from tts_common.utils import are_valid_ids
 from tts_common.expression import validate_style, validate_intensity, voice_styles
@@ -167,9 +169,33 @@ def _process(stored, context, started, final_attempt=False):
     except PermanentProviderError as error:
         status, error_code = "FAILED", error.code
         try:
-            db.fail_job(stored, error.message)
+            db.fail_job(stored, error.message, error_code=error.code)
         except db.JobConflict:
             status, error_code = "SKIPPED", "STATE_CONFLICT"
+    except TransientProviderError as error:
+        if final_attempt:
+            status, error_code = "FAILED", error.code
+            try:
+                db.fail_job(stored, error.message, error_code=error.code, retryable=True,
+                            retry_after_seconds=error.retry_after_seconds)
+            except db.JobConflict:
+                status, error_code = "SKIPPED", "STATE_CONFLICT"
+        elif not error.retry_safe:
+            # A retry-safe provider error is recorded for explicit M5 retry;
+            # other transient errors use Lambda's bounded async retry policy.
+            _log(job_id, context, started, "RETRY", error.code, attempt)
+            try:
+                db.release_job(stored)
+            except Exception as release_error:
+                _log(job_id, context, started, "RELEASE_FAILED", type(release_error).__name__, attempt)
+            raise
+        else:
+            status, error_code = "FAILED", error.code
+            try:
+                db.fail_job(stored, error.message, error_code=error.code, retryable=True,
+                            retry_after_seconds=error.retry_after_seconds)
+            except db.JobConflict:
+                status, error_code = "SKIPPED", "STATE_CONFLICT"
     except db.JobConflict:
         status, error_code = "SKIPPED", "STATE_CONFLICT"
     except Exception as error:

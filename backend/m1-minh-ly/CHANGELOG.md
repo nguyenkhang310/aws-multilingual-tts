@@ -1,5 +1,24 @@
 # CHANGELOG — M1
 
+## 2026-11-15 — Bỏ API nhân vật Audio Truyện
+
+- Gỡ hai route API nhân vật/Gemini khỏi router M1. Behavior `/audiobooks*` và các route dự án/chương/audio khác giữ nguyên.
+- Kiểm M1 **38 tests**, gồm route đã gỡ trả 404 và không được forward. Không deploy.
+
+## 2026-11-15 — Route ảnh bìa Audio Truyện (coded, locally tested)
+
+- Router cho phép `POST /audiobooks/{id}/cover-upload` và `GET/POST/DELETE /audiobooks/{id}/cover`, giữ demo token/scope do M1 gán. Dùng behavior CloudFront `/audiobooks*` hiện có, không thêm endpoint dịch vụ hoặc behavior mới.
+- M1 suite: 37 tests PASS, gồm route/auth. Chưa kiểm CORS trên Function URL/CloudFront/S3 hoặc upload Sandbox thật; cần M1 review trước khi triển khai.
+
+## 2026-11-14 — Route hồ sơ nhân vật Audio Truyện (coded, locally tested)
+
+- Router chuyển `GET/PUT /audiobooks/{id}/characters` và `POST /audiobooks/{id}/chapters/{id}/character-suggestions` về M5, giữ demo token/scope và CloudFront behavior `/audiobooks*` hiện có. M1 cần review route, CORS và root SAM trước Sandbox. M1 chạy 37 tests local, suite OK (có các ca skip theo môi trường); không deploy.
+
+## 2026-11-14 — STORY-01A Audio Truyện (coded, locally tested)
+
+- Router thêm route project/chapter/segment/upload/commit tới Lambda M5, giữ auth/scope demo và body limit; CORS Function URL cho PUT/PATCH. Không thêm Lambda hoặc dịch vụ mới.
+- M1 suite 37 tests đạt với fake/Moto; chưa kiểm CloudFront/Function URL trên Sandbox. M1 review route, CORS và SAM trước deploy.
+
 Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời điểm ghi. Đường dẫn hiện hành, nhiệm vụ và lệnh chạy xem [README](README.md).
 
 

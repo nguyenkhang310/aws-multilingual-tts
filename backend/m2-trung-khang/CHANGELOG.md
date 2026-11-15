@@ -1,5 +1,11 @@
 # CHANGELOG — M2
 
+## 2026-11-15 — Sửa retry lease của worker (coded, locally tested)
+
+- Khi lỗi transient không được đánh dấu `retry_safe`, worker nhả lease bằng CAS trước khi raise để Lambda async retry có thể claim lại job. `final_attempt=True` giờ được xử lý trước nhánh này và ghi FAILED an toàn; lỗi có chủ lease mới vẫn bị CAS conflict, không bị ghi đè. Nhánh `retry_safe=true` tiếp tục lưu FAILED kèm thời gian retry cho M5; thêm test bảo vệ hành vi đó.
+- Phân loại M2: `.venv` có `lameenc==1.8.1`; Python hệ thống không có. Chạy Python hệ thống làm 2 Gemini tests fail và 2 error do `GEMINI_TTS_NOT_CONFIGURED`. Trong `.venv`, trước sửa worker có 5 failures/1 error ở retry/lease; nguyên nhân là lease chưa được nhả và `final_attempt` không xử lý transient không retry-safe. Không cần đổi dependencies hoặc PYTHONPATH; test tự thêm đường dẫn M2/M3 cần dùng.
+- Sau sửa: M2 **115/115 PASS** bằng `.venv`. Không gọi provider/AWS thật.
+
 Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời điểm ghi. Đường dẫn hiện hành, nhiệm vụ và lệnh chạy xem [README](README.md).
 
 

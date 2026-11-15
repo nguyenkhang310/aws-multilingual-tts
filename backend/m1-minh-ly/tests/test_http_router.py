@@ -146,6 +146,15 @@ class TestHttpRouter(unittest.TestCase):
         body = json.loads(res["body"])
         self.assertEqual(body["error"]["code"], "NOT_FOUND")
 
+    def test_removed_story_character_routes_are_not_forwarded(self):
+        for path in ("/audiobooks/" + "a" * 32 + "/characters",
+                     "/audiobooks/" + "a" * 32 + "/chapters/" + "b" * 32 + "/character-suggestions"):
+            event = {"requestContext": {"http": {"method": "GET"}}, "rawPath": path,
+                     "headers": {"X-Demo-Token": "test-secret-token"}}
+            response = app.handler(event, None)
+            self.assertEqual(response["statusCode"], 404)
+        self.assertEqual(self.dispatched_calls, [])
+
     def test_method_not_allowed_returns_405(self):
         event = {
             "requestContext": {"http": {"method": "GET"}},

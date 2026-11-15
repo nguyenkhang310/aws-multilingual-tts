@@ -14,9 +14,14 @@ OUTPUT_FORMAT = "audio-24khz-96kbitrate-mono-mp3"
 ET.register_namespace("mstts", "https://www.w3.org/2001/mstts")
 
 
-def error_for_status(status):
+def error_for_status(status, retry_after=None):
     if status == 429:
-        return TransientProviderError("PROVIDER_BUSY", "Azure đang giới hạn lượt gọi hoặc đã hết hạn mức. Vui lòng kiểm tra Speech F0.")
+        try:
+            retry_after = max(1, min(300, int(retry_after)))
+        except (TypeError, ValueError):
+            retry_after = 30
+        return TransientProviderError("PROVIDER_BUSY", "Azure đang giới hạn lượt gọi hoặc đã hết hạn mức. Vui lòng kiểm tra Speech F0.",
+                                      retry_safe=True, retry_after_seconds=retry_after)
     if status >= 500 or status == 408:
         return TransientProviderError("PROVIDER_BUSY", "Azure Speech đang bận, vui lòng thử lại sau.")
     if status in {401, 403}:
@@ -63,8 +68,9 @@ class AzureSpeechProvider(TTSProvider):
                 data = response.read(MAX_AUDIO_BYTES + 1)
         except urllib.error.HTTPError as error:
             status = error.code
+            retry_after = error.headers.get("Retry-After") if error.headers else None
             error.close()
-            raise error_for_status(status) from None
+            raise error_for_status(status, retry_after) from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             reason = error.reason if isinstance(error, urllib.error.URLError) else error
             if isinstance(reason, TimeoutError):

@@ -1,5 +1,32 @@
 # CHANGELOG — M3
 
+## 2026-11-15 — Chia đoạn Audio Truyện theo câu (coded, locally tested)
+
+- Mỗi story segment tối đa 10.000 ký tự UTF-16, ưu tiên kết thúc ở dấu câu; M2 vẫn chia nhỏ bên trong một job theo provider. Chương đã lưu không tự đổi ranh giới, phải lưu lại nội dung nếu muốn chia lại.
+- M3 suite: 65/65 PASS. Chưa nghiệm thu MP3 thật hoặc chất lượng ngắt nghỉ trên AWS.
+
+## 2026-11-15 — Gỡ lưu trữ nhân vật Audio Truyện
+
+- Xóa repository S3 CAS và test riêng cho hồ sơ nhân vật/quan hệ; không còn code M3 đọc/ghi `characters.json`. Các object đã có trong bucket không bị tự xóa.
+- Kiểm M3 **64 tests PASS** sau khi gỡ.
+
+## 2026-11-15 — Lưu ảnh bìa dự án Audio Truyện (coded, locally tested)
+
+- Common Layer thêm kiểm PNG/JPEG thật, 5 MiB, 20 MP/10.000 px mỗi cạnh; presigned POST staging, backend đọc/kiểm rồi sao chép cover private và ghi key/metadata bằng ETag CAS. GET cấp presigned URL 15 phút; thay/xóa giữ metadata nhất quán qua CAS. Prefix staging tự hết hạn sau một ngày, cover chính không theo TTL job.
+- M3 suite: 66 tests PASS, gồm upload hợp lệ, MIME/size/magic/pixel sai, đổi/xóa, refresh URL, scope, stale version và lỗi S3. Chưa kiểm quyền, CORS, lifecycle hoặc tải ảnh trên S3 Sandbox thật.
+
+## 2026-11-14 — Hồ sơ nhân vật Audio Truyện (coded, locally tested)
+
+- Common Layer thêm `story_characters.py`: mỗi dự án một object S3 JSON, CAS bằng ETag, tối đa 100 nhân vật và 200 sự kiện quan hệ. Sự kiện đã lưu chỉ thêm; sửa hồ sơ vẫn được sau khi chương đầu tiên bị xóa mềm. M3 cần review retention và hành vi xung đột trên S3 thật.
+- Kiểm local: M3 62/62 tests đạt, gồm version cũ, quan hệ sai, CAS conflict và chương đã xóa. Không gọi AWS thật hoặc deploy.
+
+## 2026-11-14 — STORY-01A Audio Truyện (coded, locally tested)
+
+- Common Layer thêm kho Project/Chapter/Segment trong S3 jobs bucket, CAS metadata, upload chunk, manifest revision và source/segment paging. Tạo/sửa/xóa mềm, idempotency key được băm thành ID; dữ liệu ghi dở chưa công bố.
+- Fingerprint tạo chương được giữ bất biến trong metadata: gửi lại cùng key/payload vẫn tìm đúng chương sau khi đổi tên hoặc số chương.
+- Lifecycle jobs bucket chỉ hết hạn các prefix job/counter cũ, không xóa `audiobooks/demo/` sau 30 ngày. S3 object chưa commit/đã xóa mềm còn cho tới khi Lab reset; M3 cần chốt cleanup/retention.
+- M3 suite 58 tests đạt, gồm chương 500.000 ký tự Unicode, CAS, concurrent commit, lỗi ghi dở và khôi phục đúng ranh giới đoạn từ backup. Chưa thử bucket/retention trên Sandbox.
+
 Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời điểm ghi. Đường dẫn hiện hành, nhiệm vụ và lệnh chạy xem [README](README.md).
 
 

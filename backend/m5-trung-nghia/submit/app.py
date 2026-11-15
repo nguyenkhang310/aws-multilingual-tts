@@ -8,6 +8,7 @@ trả skipped nguyên bản khi không khả dụng. Module sở hữu: M5.
 
 import json
 import os
+import re
 import time
 
 import correction
@@ -15,6 +16,8 @@ import azure_preview
 import translation
 import idempotency
 import document
+import audiobooks
+import story_events
 
 from tts_common import aws, config, db
 from tts_common.errors import error_response, json_response, log_json
@@ -24,6 +27,7 @@ from tts_common.expression import validate_style, validate_intensity
 
 
 AUTO_LANGS = {None, "", "auto"}
+STORY_ID = re.compile(r"^[a-f0-9]{32}$")
 
 
 class InvalidRequest(Exception):
@@ -99,6 +103,20 @@ def _dispatch(user_id, job_id):
     )
 
 
+def _story_context(event):
+    value = event.get("storyContext")
+    if value is None:
+        return None
+    if not isinstance(value, dict) or any(not STORY_ID.fullmatch(str(value.get(key, "")))
+        for key in ("projectId", "chapterId", "planId", "segmentId")):
+        raise InvalidRequest(400, "INVALID_INPUT", "Tham chiếu audio truyện không hợp lệ.")
+    for name, low, high in (("index", 0, 1999), ("attempt", 1, 3), ("planRevision", 1, 1000000)):
+        item = value.get(name)
+        if type(item) is not int or not low <= item <= high:
+            raise InvalidRequest(400, "INVALID_INPUT", "Tham chiếu audio truyện không hợp lệ.")
+    return {key: value[key] for key in ("projectId", "chapterId", "planId", "segmentId", "index", "attempt", "planRevision")}
+
+
 def _synthesize(event):
     """Kiểm tra đầu vào, tạo job rồi gửi cho worker."""
     body = _parse_body(event)
@@ -108,8 +126,9 @@ def _synthesize(event):
     except ValueError:
         raise InvalidRequest(400, "INVALID_INPUT", "Idempotency-Key không hợp lệ.") from None
     user_id = get_user_id(event)
+    story_context = _story_context(event)
     if request_key is not None:
-        request_fingerprint = idempotency.fingerprint(body)
+        request_fingerprint = idempotency.fingerprint(body, story_context)
         try:
             replay = idempotency.replay_if_present(user_id, request_key, request_fingerprint)
         except Exception as error:
@@ -145,6 +164,7 @@ def _synthesize(event):
         return idempotency.submit_first(
             user_id, request_key, request_fingerprint, text, body["lang"], voice, speed,
             entry.get("provider"), entry.get("engine"), _dispatch, translate_to=target, style=style, style_intensity=style_intensity,
+            story_context=story_context,
         )
 
     if not db.reserve_chars(len(text)):
@@ -152,7 +172,8 @@ def _synthesize(event):
     try:
         job = db.create_job(
             user_id, text, body["lang"], voice, speed, translate_to=target,
-            provider=entry.get("provider"), engine=entry.get("engine"), style=style, style_intensity=style_intensity
+            provider=entry.get("provider"), engine=entry.get("engine"), style=style,
+            style_intensity=style_intensity, story_context=story_context
         )
     except Exception as error:
         # S3 can persist the job before a connection error hides the response.
@@ -191,6 +212,7 @@ def _correct(event):
     }
     cfg = correction.settings()
     if cfg is None or lang not in {"vi-VN", "en-US", "ja-JP"}:
+        payload["reason"] = "FEATURE_UNAVAILABLE" if cfg is None else "UNSUPPORTED_LANGUAGE"
         return json_response(200, payload)
     if len(text) > cfg["maxChars"]:
         raise InvalidRequest(400, "TEXT_TOO_LONG", "Nội dung kiểm tra quá dài.")
@@ -202,6 +224,7 @@ def _correct(event):
         log_json(module="M5", operation="correct", status="SKIPPED", errorCode=failure["code"],
                  durationMs=int((time.monotonic() - started) * 1000),
                  **({"providerStatus": failure["httpStatus"]} if "httpStatus" in failure else {}))
+        payload["reason"] = failure["code"]
         return json_response(200, payload)
     log_json(module="M5", operation="correct", status="CHECKED",
              durationMs=int((time.monotonic() - started) * 1000))
@@ -243,7 +266,13 @@ def _preview_translation(event):
 
 def handler(event, context):
     """Chọn thao tác theo path; lỗi không lường trước trả 500 đã làm sạch."""
+    if isinstance(event, dict) and (event.get("operation") in {"storyCompletion", "storyWorkerFailure"} or
+                                    (isinstance(event.get("requestPayload"), dict) and
+                                     isinstance(event.get("requestContext"), dict))):
+        return story_events.handle(event)
     try:
+        if event.get("path", "").startswith("/audiobooks"):
+            return audiobooks.handler(event, context)
         if event.get("path") == "/documents/recognize":
             return _recognize_document(event)
         if event.get("path") == "/text/correct":

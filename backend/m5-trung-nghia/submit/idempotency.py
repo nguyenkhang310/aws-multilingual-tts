@@ -31,7 +31,7 @@ def key_from_event(event):
     return values[0]
 
 
-def fingerprint(body):
+def fingerprint(body, story_context=None):
     """Hash only public business fields; never persist or log the original text."""
     fields = [body.get(name) for name in ("text", "lang", "voice", "speed", "translateTo")]
     if body.get("style", "neutral") != "neutral":
@@ -40,6 +40,8 @@ def fingerprint(body):
         fields.append({"styleIntensity": body["styleIntensity"]})
     if body.get("provider") is not None:
         fields.append({"provider": body["provider"]})
+    if story_context is not None:
+        fields.append({"storyContext": story_context})
     canonical = json.dumps(fields, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -90,7 +92,8 @@ def replay_if_present(user_id, key, expected_fingerprint):
     return _replay_record(user_id, record, expected_fingerprint) if record is not None else None
 
 
-def submit_first(user_id, key, expected_fingerprint, text, lang, voice, speed, provider, engine, dispatch, translate_to=None, style=None, style_intensity=1.0):
+def submit_first(user_id, key, expected_fingerprint, text, lang, voice, speed, provider, engine, dispatch,
+                 translate_to=None, style=None, style_intensity=1.0, story_context=None):
     """Claim before quota and job creation; only the claim winner may dispatch."""
     try:
         created, record = db.create_idempotency(user_id, key, expected_fingerprint, make_job_id())
@@ -102,7 +105,8 @@ def submit_first(user_id, key, expected_fingerprint, text, lang, voice, speed, p
             return _quota_error()
         record = db.update_idempotency(user_id, key, record, "RESERVED")
         db.create_job(user_id, text, lang, voice, speed, translate_to=translate_to,
-                      provider=provider, engine=engine, job_id=job_id, style=style, style_intensity=style_intensity)
+                      provider=provider, engine=engine, job_id=job_id, style=style,
+                      style_intensity=style_intensity, story_context=story_context)
         record = db.update_idempotency(user_id, key, record, "JOB_CREATED")
         record = db.update_idempotency(user_id, key, record, "DISPATCHING")
     except Exception as error:

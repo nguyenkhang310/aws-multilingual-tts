@@ -1,5 +1,55 @@
 # CHANGELOG — M5
 
+## 2026-11-15 — TYPO-CORRECTION-02 (coded, locally tested)
+
+- Gemini typo nhận toàn câu và chỉ trả `correctedText`. Backend tính diff/offset UTF-16; cho phép lỗi Telex, dấu và chữ lặp được đề xuất để người dùng duyệt. Giữ URL/email và giới hạn sửa gần từ gốc; phản hồi không hợp lệ trả `skipped` với mã lý do, không tạo job TTS.
+- Mặc định tối đa 12 sửa/lượt trong SAM/local. So cùng 40 candidate offline với validator từ HEAD: trước giữ đúng 27/40 candidate, sau giữ đúng 40/40; đây là phép đo validator, chưa đo độ chính xác Gemini thật. M5: 151/151 tests đạt trong `.venv`; không gọi AWS/Gemini thật.
+
+## 2026-11-15 — Kiểm fallback khi mất callback Audio Truyện (coded, locally tested)
+
+- Thêm test mô phỏng job hoàn tất nhưng mất success callback: progress đối soát thấy segment DONE; một `/tick` thủ công cấp đúng segment kế tiếp, không tạo lại job đầu hoặc tiêu quota lặp. Callback và tick tiếp tục dựa trên CAS/lease đã có.
+- M5 suite: **150 tests PASS**. Không có scheduler độc lập; EventBridge chưa được xác minh trong AWS Academy và nằm ngoài baseline dịch vụ hiện được phép. Headless recovery vẫn partial, không tự phát hiện mất callback nếu không có client/operator gọi tick.
+
+## 2026-11-15 — Kiểm luồng cấp đoạn Audio Truyện (coded, locally tested)
+
+- Web/app dùng route tick M5 hiện có khi run RUNNING còn QUEUED nhưng không có job active. Điều chỉnh fixture batch theo segment 10.000 ký tự để vẫn kiểm tiếp tục, quota và chương dài; M5 suite 149/149 PASS. Không thay dispatcher/idempotency/quota M5; callback completion vẫn là luồng chính khi trang đóng. Cần kiểm destination/permission trên Sandbox trước khi xác nhận headless.
+
+## 2026-11-15 — Gỡ Gemini đề xuất nhân vật và API hồ sơ (coded)
+
+- Xóa endpoint Gemini đề xuất và API hồ sơ nhân vật; bỏ cấu hình model/quota riêng khỏi SAM và local runtime. Các API Audio Truyện khác giữ nguyên. Kiểm M5 **149 tests PASS**, gồm route đã gỡ trả 404. Không deploy.
+
+## 2026-11-15 — STORY-01C điều khiển batch và callback headless (implemented local, headless partial)
+
+- M5 thêm Pause/Resume/Retry, desired state, lease dispatcher, attempt history, backoff và đối soát queue/job/idempotency bằng CAS M3. Retry chỉ dành cho job FAILED có bằng chứng retryable; UNCERTAIN không tự phát lại. Lỗi quota/throttle hoặc cấu hình/provider dùng chung dừng cấp đoạn mới; lỗi riêng một segment không làm mất cơ hội xử lý các đoạn còn lại.
+- M2 dùng EventInvokeConfig hiện có để gửi OnSuccess/OnFailure về M5. Completion callback tự cấp tối đa một item tiếp theo; failure callback chỉ redrive một lần khi job còn PENDING, chưa claim. M1 route ba API điều khiển; M4 web/Expo thêm nút và progress.
+- Local integration test mô phỏng 8 segment, quota, completion callback, Pause/Resume, retry, duplicate/stale events và lỗi chưa rõ. Fake không chứng minh AWS destination/permission thật. Chưa có scheduler/reconciler độc lập; callback bị mất hoặc Lab dừng vẫn cần đối soát thủ công. STORY-01C **partial** ở yêu cầu headless recovery.
+- Kiểm thử: M5 150/150; M3 66/66; M1 37 chạy, suite OK (14 skipped); web UI 132/132 và production build; Expo 95/95, typecheck, lint và export iOS/Android đạt. M2 chạy 114 tests nhưng có 7 failures và 3 errors: bốn test Gemini dừng ở `GEMINI_TTS_NOT_CONFIGURED` vì interpreter hiện tại thiếu `lameenc`; worker retry/lease tests còn lỗi cần M2 review. Không sửa worker hoặc nới assertion. Sáu template YAML parse cú pháp được; SAM validate/build chưa chạy vì CLI không cài. Chưa gọi AWS/provider live, deploy, commit hoặc push.
+- Cần review: M1 routes/root wiring/permission; M2 completion destination + worker retry; M3 schema/CAS/slot; M4 web/Expo. Chưa đánh dấu deployable hoặc AWS verified.
+
+## 2026-11-15 — API ảnh bìa Audio Truyện (coded, locally tested)
+
+- Thêm adapter `story_covers_api.py` và dispatch trong `audiobooks.py` cho upload ticket, xác nhận, refresh URL và xóa. M1 route vào M5; M5 kiểm scope demo và chuyển dữ liệu/metadata qua M3, không gửi bytes ảnh qua Lambda body, không tạo TTS job.
+- M1 → M5 → fake S3/M3 tests và toàn suite M5 đạt **135 tests**. Chưa gọi S3/AWS thật hoặc deploy.
+
+## 2026-11-14 — Duyệt nhân vật và dịch audio chương (coded, locally tested)
+
+- M5 thêm API hồ sơ nhân vật và endpoint Gemini đề xuất từ tối đa 6.000 ký tự đầu chương. Gemini mặc định tắt, quota riêng; response không ghi S3. Chỉ PUT sau khi người dùng duyệt mới lưu, vẫn dùng CAS M3. M1 route và M4 web cần owner review.
+- Plan Audio Truyện nhận `translateTo` tùy chọn bằng ngôn ngữ đích dự án. Khi khác nguồn, kiểm cấu hình Azure Translator trước khi tạo plan, chọn giọng đích và chuyển `translateTo` qua Submit/worker hiện có. Không đổi provider, quota hoặc cách dispatch; mỗi đoạn dịch riêng cần nghiệm thu chất lượng xuyên đoạn.
+- Kiểm local: M5 134/134 tests, M3 62/62; M1 chạy 37 tests, suite OK (có ca skip); web 128/128 UI tests và build; app 84/84 tests và typecheck. M2 suite 114/114 đạt khi chạy lại sau một lượt lỗi gián đoạn lúc chạy nhiều suite song song. Không gọi Gemini/Azure/AWS thật, chưa nghe MP3 mới, không commit/push/deploy.
+- Theo ảnh phản hồi, plan cho phép `style=auto` khi provider, giọng và cấu hình hiện hành hỗ trợ; M2 vẫn chọn một sắc thái chính cho từng job/đoạn. Chưa phân biệt lời thoại và cảm xúc riêng cho từng câu.
+
+## 2026-11-14 — STORY-01B Chapter Batch TTS (coded, locally tested)
+
+- M5 thêm `story_plan.py`, `story_dispatch.py`, `story_runner.py`, `story_progress.py`, `story_api.py`; plan từ revision segment S3, cấp từng item qua Submit/idempotency hiện hành, giữ queue trên M3 và đối chiếu DONE với object audio. Không tự retry dispatch chưa rõ; quota ký tự qua M5, provider call quota do M2 kiểm cuối.
+- M3 thêm per-item queue và CAS project slots; M1 thêm routes và `StoryMaxActive`; M4 thêm web plan/start/progress/player và Expo xem/tick. M5 sửa tick để phát hiện FAILED/UNCERTAIN ở toàn queue trước khi cấp item, không ghi lùi DONE/PROCESSING và không báo DONE khi audio mất. Start cùng plan sau ngày khác giữ run cũ, không tạo run/job mới. Local runtime sửa override cấu hình không tồn tại.
+- Kiểm thử local dùng fake S3/Lambda/M2 worker và audio fixture, chưa gọi provider/AWS thật, chưa deploy. M1 37/37, M2 114/114, M3 60/60; M5 130/130 sau test chương >200.000 ký tự; web 121/121, Expo 69/69. Web build, app typecheck/lint và export iOS/Android đạt; sáu YAML parse được, `cfn-lint` chưa cài. M1/M3/M4 cần review code theo owner; M2 cần review cách ước tính Gemini call quota và worker Event.
+- Giới hạn: đóng cả web/app thì chỉ job đã dispatch có thể hoàn tất, chưa có backend trigger cấp đoạn kế; pause/resume/retry và reconciliation nâng cao thuộc STORY-01C. Không hứa exactly-once provider execution hoặc billing.
+
+## 2026-11-14 — STORY-01A Audio Truyện (coded, locally tested)
+
+- `submit/audiobooks.py` xử lý API Project/Chapter/Segment riêng, gọi repository M3 qua Common Layer. `submit/app.py` chỉ chuyển route; không tạo TTS job, quota hoặc gọi provider.
+- Test router M1 → handler M5 → fake S3 M3 đạt: token, create/replay/conflict, upload/commit/source/segments, stale revision và xóa mềm. M5 116/116 tests đạt; chưa gọi AWS/Azure/Gemini thật hoặc deploy. M5 review input/error với M1/M3.
+
 Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời điểm ghi. Đường dẫn hiện hành, nhiệm vụ và lệnh chạy xem [README](README.md).
 
 

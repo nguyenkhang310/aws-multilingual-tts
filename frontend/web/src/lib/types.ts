@@ -1,5 +1,5 @@
 export type Page =
-  "dashboard" | "studio" | "translation" | "voices" | "library" | "settings" | "help";
+  "dashboard" | "studio" | "translation" | "audiobooks" | "voices" | "library" | "settings" | "help";
 export type JobStatus = "PENDING" | "PROCESSING" | "DONE" | "FAILED";
 export interface Voice {
   description?: string;
@@ -33,6 +33,7 @@ export interface SynthesizeInput {
 }
 export interface TextCorrection {
   status: "checked" | "skipped";
+  reason?: string;
   language: string;
   hasTypos: boolean;
   originalText: string;

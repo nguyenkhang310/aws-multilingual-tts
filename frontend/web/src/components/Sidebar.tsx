@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 import { navigation } from "../lib/data";
 import type { Page } from "../lib/types";
+import type { StoryChapter } from '../../../shared/story';
 import { Brand, Button, Icon } from "./ui";
 
 const footer: typeof navigation = [
@@ -8,10 +9,14 @@ const footer: typeof navigation = [
   { id: "settings", title: "Cài đặt", icon: "settings" },
 ];
 
-export default function Sidebar({ page, collapsed, count, onToggle, onNavigate, drawer = false }: {
+export default function Sidebar({ page, collapsed, count, storyChapters = [], storyProjectTitle, selectedChapterId, onChapter, onToggle, onNavigate, drawer = false }: {
   page: Page;
   collapsed: boolean;
   count: number;
+  storyChapters?: StoryChapter[];
+  storyProjectTitle?: string | null;
+  selectedChapterId?: string | null;
+  onChapter?: (chapterId: string) => void;
   onToggle: () => void;
   onNavigate: (page: Page) => void;
   drawer?: boolean;
@@ -57,7 +62,20 @@ export default function Sidebar({ page, collapsed, count, onToggle, onNavigate, 
       </div>
       <nav aria-label="Công cụ" style={{ "--nav-index": Math.max(0, index) } as CSSProperties}>
         <div className={`nav-selection ${index < 0 ? "hidden" : ""}`} aria-hidden="true" />
-        {navigation.map(link)}
+        {navigation.map(item => <div key={item.id}>
+          {link(item)}
+          {item.id === 'audiobooks' && page === 'audiobooks' && !collapsed && storyChapters.length > 0 &&
+            <div className="story-sidebar-list" aria-label="Chương đã lưu">
+              {storyProjectTitle && <div className="story-sidebar-title" title={storyProjectTitle}>
+                <small>TRUYỆN</small><strong>{storyProjectTitle}</strong></div>}
+              {storyChapters.map(chapter => <button key={chapter.chapterId} type="button"
+                className={chapter.chapterId === selectedChapterId ? 'is-active' : ''}
+                title={`${chapter.chapterNumber}. ${chapter.title}`}
+                onClick={() => { onChapter?.(chapter.chapterId); if (drawer) onToggle(); }}>
+                <span>{chapter.chapterNumber}. {chapter.title}</span>
+              </button>)}
+            </div>}
+        </div>)}
       </nav>
       <nav className="sidebar-bottom" aria-label="Trợ giúp và tùy chọn"
         style={{ "--nav-index": Math.max(0, footer.findIndex((item) => item.id === page)) } as CSSProperties}>

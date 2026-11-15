@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlayback } from "../hooks/usePlayback";
-import { formatTime, languageNames, voiceLabel } from "../lib/data";
+import { formatTime } from "../lib/data";
 import { Button, Icon, Slider, ToolArt } from "./ui";
-import type { HistoryItem, Language } from "../lib/types";
-import { expressionName } from '../../../shared/expression';
+import type { HistoryItem } from "../lib/types";
 import { markTtsPlayable } from '../../../shared/tts-performance';
 
 export default function AudioPlayer({
   item,
   queue,
-  languages = [],
   onSelect,
   onLibrary,
   volume,
@@ -20,7 +18,6 @@ export default function AudioPlayer({
 }: {
   item: HistoryItem | null;
   queue: HistoryItem[];
-  languages?: Language[];
   onSelect: (item: HistoryItem) => Promise<unknown>;
   onLibrary: () => void;
   volume: number;
@@ -142,9 +139,6 @@ export default function AudioPlayer({
         <div className="player-details">
           <div className="player-meta">
             <strong title={item?.text}>{item ? item.text : "Chưa có âm thanh"}</strong>
-            <span>
-              {item ? `${voiceLabel(languages, item.voice)} · ${languageNames[item.lang] || item.lang}${item.resolvedStyle && item.resolvedStyle !== 'neutral' ? ` · ${expressionName(item.resolvedStyle)}` : ''}` : ""}
-            </span>
           </div>
           <div className="player-track">
             <time>{formatTime(elapsed)}</time>

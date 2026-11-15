@@ -7,6 +7,7 @@ export const navigation: { id: Page; title: string; icon: string }[] = [
   { id: "translation", title: "Dịch và đọc", icon: "translate" },
   { id: "voices", title: "Chọn giọng đọc", icon: "mic" },
   { id: "library", title: "Bản thu đã lưu", icon: "headphones" },
+  { id: "audiobooks", title: "Audio Truyện", icon: "book" },
 ];
 
 // Chỉ là dữ liệu minh họa. Khi có API, danh sách được lấy hoàn toàn từ /voices.

@@ -24,6 +24,8 @@ test("Luồng tạo giọng và dữ liệu đến không đúng thứ tự", as
     api.correct = async (text, lang) => { checked.push({ text, lang }); return { ...correction(text), hasTypos: false, correctedText: text }; };
     localStorage.clear();
     await act(async () => { env.root.render(React.createElement(Harness, { key: ++revision, target })); await settle(); });
+    // Các tình huống bên dưới kiểm nghiệp vụ với ngôn ngữ được người dùng chọn rõ.
+    await act(() => studio.setLang('vi-VN'));
     await act(() => studio.updateText(text));
     if (correctionEnabled) await act(() => studio.setCheckSpelling(true));
   }
@@ -139,7 +141,7 @@ test("Luồng tạo giọng và dữ liệu đến không đúng thứ tự", as
       assert.equal(checked.length, 1);
       assert.equal(submitted[0].text, "toi muon nghe");
       assert.equal(studio.review, null);
-      assert.match(studio.correctionNotice, /chưa kiểm tra được/);
+      assert.match(studio.correctionNotice, /Chưa kiểm tra được/);
     });
     await suite.test("sửa văn bản làm mất hiệu lực đề xuất cũ", async () => {
       await mount(); api.correct = async (text) => correction(text);

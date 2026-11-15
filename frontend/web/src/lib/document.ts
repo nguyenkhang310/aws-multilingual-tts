@@ -64,9 +64,9 @@ export async function extractDocument(file: File, options: ImportOptions = {}): 
       const mammoth = await import('mammoth');
       const arrayBuffer = await abortable(file.arrayBuffer(), options);
       checkDocxSize(arrayBuffer);
-      return checkedDocument((await abortable(mammoth.extractRawText({ arrayBuffer }), options)).value);
+      return checkedDocument((await abortable(mammoth.extractRawText({ arrayBuffer }), options)).value, options.maxChars);
     }
-    return checkedDocument(await abortable(file.text(), options));
+    return checkedDocument(await abortable(file.text(), options), options.maxChars);
   } catch (error) {
     checkCancelled(options);
     if (!(error instanceof Error)) throw new Error('Không nhận dạng được tài liệu. Hãy thử lại với ảnh rõ hơn.');

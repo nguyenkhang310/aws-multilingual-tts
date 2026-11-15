@@ -8,9 +8,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:ui": "node --test tests/*.test.mjs",
-    "prepare": "node scripts/prepare-documents.mjs",
-    "predev": "node scripts/prepare-documents.mjs",
-    "prebuild": "node scripts/prepare-documents.mjs"
+    "verify:language-model": "node ../scripts/verify-eld-model.mjs web",
+    "prepare": "node scripts/prepare-documents.mjs && npm run verify:language-model",
+    "predev": "node scripts/prepare-documents.mjs && npm run verify:language-model",
+    "prebuild": "node scripts/prepare-documents.mjs && npm run verify:language-model"
   },
   "dependencies": {
     "@radix-ui/react-select": "2.4.1",
@@ -20,8 +21,10 @@
     "@tesseract.js-data/jpn": "1.0.0",
     "@tesseract.js-data/kor": "1.0.0",
     "@tesseract.js-data/vie": "1.0.0",
+    "eld": "2.1.1",
     "framework7-icons": "5.0.5",
     "glisse": "^0.5.0",
+    "lamejs": "^1.2.1",
     "mammoth": "^1.13.0",
     "onnxruntime-web": "1.29.0",
     "pdfjs-dist": "5.5.207",

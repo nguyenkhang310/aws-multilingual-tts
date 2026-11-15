@@ -97,7 +97,7 @@ function checkedJob(value: unknown): Job {
   return value;
 }
 
-async function request<T>(path: string, init?: RequestInit, timeout = 45000, base = API_BASE): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit, timeout = 45000, base = API_BASE): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   init?.signal?.addEventListener('abort', abort, { once: true });

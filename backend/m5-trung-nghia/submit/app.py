@@ -10,6 +10,9 @@ import json
 import os
 import re
 import time
+import base64
+import io
+import wave
 
 import correction
 import azure_preview
@@ -24,6 +27,7 @@ from tts_common.errors import error_response, json_response, log_json
 from tts_common.utils import get_user_id
 from tts_common.voices import load_registry
 from tts_common.expression import validate_style, validate_intensity
+from tts_common import voice_profiles
 
 
 AUTO_LANGS = {None, "", "auto"}
@@ -137,11 +141,27 @@ def _synthesize(event):
         if replay is not None:
             return replay
     provider = body.get("provider")
-    if provider is not None and (not isinstance(provider, str) or provider not in {"azure", "elevenlabs", "gemini"}):
+    if provider is not None and (not isinstance(provider, str) or provider not in {"azure", "elevenlabs", "gemini", "vieneu"}):
         raise InvalidRequest(400, "INVALID_PROVIDER", "Nguồn giọng đọc không hợp lệ.")
-    entry = _find_entry(body.get("lang"), provider)
+    voice_profile_id, voice_clone = _clone_request(body, provider)
+    if provider == "vieneu":
+        if os.environ.get("VOICE_CLONE_ENABLED") != "true":
+            raise InvalidRequest(503, "VOICE_CLONE_NOT_CONFIGURED", "Chưa bật VieNeu ở máy chủ.")
+        profile = voice_profiles.get(user_id, voice_profile_id)
+        if not profile or profile.get("status") != "READY" or profile.get("lang") != body.get("lang"):
+            raise InvalidRequest(400, "VOICE_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ giọng cho ngôn ngữ đã chọn.")
+        if body.get("voice") != voice_profile_id:
+            raise InvalidRequest(400, "INVALID_INPUT", "Hãy chọn đúng hồ sơ giọng đã đăng ký.")
+        entry = {"provider": "vieneu", "engine": profile["engine"], "voices": [{"id": voice_profile_id}],
+                 "speedRange": [0.7, 1.2]}
+    else:
+        if body.get("voiceProfileId") is not None or body.get("voiceClone") is not None:
+            raise InvalidRequest(400, "INVALID_INPUT", "Cài đặt giọng clone chỉ dùng với VieNeu.")
+        entry = _find_entry(body.get("lang"), provider)
     target = body.get("translateTo")
     if target is not None:
+        if provider == "vieneu":
+            raise InvalidRequest(400, "UNSUPPORTED_LANGUAGE", "VieNeu hiện chỉ đọc trực tiếp tiếng Việt, không dịch trong job.")
         entry = _find_entry(target, provider)
         if target == body["lang"]:
             raise InvalidRequest(400, "INVALID_INPUT", "Hãy chọn ngôn ngữ đích khác ngôn ngữ gốc.")
@@ -150,6 +170,8 @@ def _synthesize(event):
     voice = _pick_voice(entry, body.get("voice"))
     speed = _pick_speed(entry, body.get("speed"))
     style = body.get("style", "neutral")
+    if provider == "vieneu" and (style != "neutral" or body.get("styleIntensity", 1.0) != 1.0):
+        raise InvalidRequest(400, "UNSUPPORTED_STYLE", "VieNeu chưa hỗ trợ sắc thái hoặc cường độ cảm xúc.")
     try:
         validate_style(entry, voice, style)
         style_intensity = validate_intensity(style, body.get("styleIntensity", 1.0))
@@ -164,7 +186,7 @@ def _synthesize(event):
         return idempotency.submit_first(
             user_id, request_key, request_fingerprint, text, body["lang"], voice, speed,
             entry.get("provider"), entry.get("engine"), _dispatch, translate_to=target, style=style, style_intensity=style_intensity,
-            story_context=story_context,
+            story_context=story_context, voice_profile_id=voice_profile_id, voice_clone=voice_clone,
         )
 
     if not db.reserve_chars(len(text)):
@@ -173,7 +195,8 @@ def _synthesize(event):
         job = db.create_job(
             user_id, text, body["lang"], voice, speed, translate_to=target,
             provider=entry.get("provider"), engine=entry.get("engine"), style=style,
-            style_intensity=style_intensity, story_context=story_context
+            style_intensity=style_intensity, story_context=story_context,
+            voice_profile_id=voice_profile_id, voice_clone=voice_clone
         )
     except Exception as error:
         # S3 can persist the job before a connection error hides the response.
@@ -264,6 +287,64 @@ def _preview_translation(event):
     return azure_preview.preview(text, source, target)
 
 
+def _clone_request(body, provider):
+    if provider != "vieneu":
+        return None, None
+    profile_id, options = body.get("voiceProfileId"), body.get("voiceClone", {})
+    if not isinstance(profile_id, str) or not re.fullmatch(r"[a-f0-9]{32}", profile_id) or not isinstance(options, dict):
+        raise InvalidRequest(400, "INVALID_INPUT", "Hồ sơ hoặc cài đặt VieNeu không hợp lệ.")
+    if set(options) - {"denoise", "useRefCodes", "temperature"}:
+        raise InvalidRequest(400, "INVALID_INPUT", "Cài đặt VieNeu không hợp lệ.")
+    denoise, ref_codes = options.get("denoise", True), options.get("useRefCodes", True)
+    temperature = options.get("temperature", 0.8)
+    if type(denoise) is not bool or type(ref_codes) is not bool or type(temperature) not in (int, float) or not 0.4 <= temperature <= 1.0:
+        raise InvalidRequest(400, "INVALID_INPUT", "Cài đặt VieNeu nằm ngoài giới hạn.")
+    return profile_id, {"denoise": denoise, "useRefCodes": ref_codes, "temperature": float(temperature)}
+
+
+def _voice_profiles(event):
+    if os.environ.get("VOICE_CLONE_ENABLED") != "true":
+        return error_response(503, "VOICE_CLONE_NOT_CONFIGURED", "Chưa bật quản lý hồ sơ giọng ở máy chủ.")
+    user_id = get_user_id(event)
+    method = event.get("httpMethod", "GET").upper()
+    if method == "GET":
+        return json_response(200, {"items": voice_profiles.list_profiles(user_id)})
+    body = _parse_body(event)
+    name, encoded = body.get("name"), body.get("audioBase64")
+    if body.get("consent") is not True:
+        raise InvalidRequest(400, "CONSENT_REQUIRED", "Hãy xác nhận bạn có quyền sử dụng mẫu giọng này.")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 40 or body.get("lang") != "vi-VN":
+        raise InvalidRequest(400, "INVALID_INPUT", "Tên hồ sơ tối đa 40 ký tự; hiện chỉ hỗ trợ tiếng Việt.")
+    try:
+        if not isinstance(encoded, str) or len(encoded) > 2_800_000:
+            raise ValueError
+        audio = base64.b64decode(encoded, validate=True)
+        if len(audio) > 2 * 1024 * 1024:
+            raise ValueError
+        with wave.open(io.BytesIO(audio), "rb") as sample:
+            duration = sample.getnframes() / sample.getframerate()
+            if sample.getcomptype() != "NONE" or sample.getsampwidth() != 2 or sample.getnchannels() not in (1, 2) or not 3 <= duration <= 8:
+                raise ValueError
+    except (ValueError, wave.Error, ZeroDivisionError):
+        raise InvalidRequest(400, "INVALID_REFERENCE_AUDIO", "Cần WAV PCM 16-bit, mono hoặc stereo, dài 3–8 giây và tối đa 2 MiB.") from None
+    try:
+        profile = voice_profiles.create(user_id, voice_profiles.new_id(), name.strip(), "vi-VN", audio)
+    except ValueError as error:
+        if str(error) == "VOICE_PROFILE_LIMIT":
+            raise InvalidRequest(409, "VOICE_PROFILE_LIMIT", "Đã đủ 50 hồ sơ giọng. Hãy xóa hồ sơ cũ trước khi thêm mới.") from None
+        raise
+    return json_response(201, profile)
+
+
+def _delete_voice_profile(event):
+    if os.environ.get("VOICE_CLONE_ENABLED") != "true":
+        return error_response(503, "VOICE_CLONE_NOT_CONFIGURED", "Chưa bật quản lý hồ sơ giọng ở máy chủ.")
+    profile_id = (event.get("pathParameters") or {}).get("id")
+    if not voice_profiles.delete(get_user_id(event), profile_id):
+        return error_response(404, "VOICE_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ giọng.")
+    return json_response(200, {"deleted": True})
+
+
 def handler(event, context):
     """Chọn thao tác theo path; lỗi không lường trước trả 500 đã làm sạch."""
     if isinstance(event, dict) and (event.get("operation") in {"storyCompletion", "storyWorkerFailure"} or
@@ -275,6 +356,10 @@ def handler(event, context):
             return audiobooks.handler(event, context)
         if event.get("path") == "/documents/recognize":
             return _recognize_document(event)
+        if event.get("path") == "/voice-profiles":
+            return _voice_profiles(event)
+        if event.get("path", "").startswith("/voice-profiles/"):
+            return _delete_voice_profile(event)
         if event.get("path") == "/text/correct":
             return _correct(event)
         if event.get("path") == "/text/translate":

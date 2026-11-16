@@ -129,3 +129,25 @@ Tích hợp M4 được giao 11/11: `providers/emotion.py` chọn một style ch
 Theo yêu cầu mới của người dùng, `synthesize/providers/gemini.py` tạo giọng bằng `gemini-3.8-flash-tts`, không thay Azure mặc định. `config/voices.gemini.json` chứa 30 giọng/71 locale theo tài liệu Google; bản Layer M3 phải khớp byte. Catalog công bố nhóm provider riêng; worker lấy provider/engine đã lưu, cảm xúc cụ thể hoặc auto trực tiếp qua metadata TTS. Không chuyển sang Azure khi lỗi. WAV hoàn tất được kiểm format/kích thước rồi mã hóa MP3 bằng `lameenc==1.8.1`.
 
 M2 review adapter, đầu ra MP3/ghép đoạn 1.000 ký tự, quota CAS `tts-gemini-usage/`, lỗi và retry có giới hạn; nghiệm thu nghe trên các ngôn ngữ có người đánh giá. Hai mẫu Việt/Anh đã gọi thật trên local/Moto, chưa phải Sandbox hoặc kiểm toàn catalog; xem log M4. Khi deploy, dùng bước staging wheel Linux cp312 trong `azure.py plan`, không ZIP source thuần hay binary macOS. [Hợp đồng](../../docs/CONVENTIONS.md#gemini-tts-tùy-chọn--bổ-sung-13112026), [local](../../deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng), [Sandbox](../../docs/AZURE-SPEECH.md#gemini-tts-trên-sandbox).
+
+## Đánh giá VOICE-02 — VieNeu-TTS trên CPU
+
+VieNeu-TTS 3.8.4 ONNX int8 đã được thử local bằng mẫu WAV do người dùng cung cấp; kết quả nghe được người dùng nhận xét khá giống nhưng chưa hoàn toàn khớp. File mẫu và MP3 không được đưa vào tài liệu hoặc Git. Model/cache, môi trường thử và đầu ra nằm dưới `voice02-local/` ở gốc repo; thư mục này được Git ignore.
+
+```powershell
+python -m venv voice02-local\.venv
+.\voice02-local\.venv\Scripts\python.exe -m pip install vieneu==3.8.4 --no-deps
+.\voice02-local\.venv\Scripts\python.exe -m pip install -r backend/m2-trung-khang/scripts/voice_clone_requirements.txt
+.\voice02-local\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/prepare_voice_clone_model.py --output-dir voice02-local\model
+.\voice02-local\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/voice_clone_smoke.py --reference voice02-local\reference.wav --model-dir voice02-local\model\hf-cache\hub\models--pnnbao-ump--VieNeu-TTS-v3-Turbo\snapshots\61b85e3d937fbbacb387714180e8182823512523 --cache-dir voice02-local\model\hf-cache --output-dir voice02-local\output --consent
+```
+
+Mọi dữ liệu VOICE-02 đặt dưới `voice02-local/` ở gốc repo: `.venv`, model/cache, WAV giọng và MP3 đầu ra. Downloader khóa revision VieNeu `61b85e3d937fbbacb387714180e8182823512523` và MOSS ONNX codec `ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae`; artifacts tải về lần này chiếm khoảng 312 MiB. SHA-256 được kiểm cho artifact có checksum LFS công bố. Model Apache-2.0; cần tuân thủ license riêng của SDK và codec.
+
+## Tích hợp thử nghiệm VieNeu
+
+Source hiện có provider `vieneu`, API hồ sơ và UI web/app. Người dùng có thể thêm WAV PCM 16-bit, mono/stereo, dài 3–8 giây, tối đa 2 MiB; chọn hồ sơ rồi tạo TTS. Tinh chỉnh gồm `useRefCodes`, `denoise` và `temperature` trong dải 0,4–1,0. Đây là tham số model, không phải thanh đo độ giống; không bảo đảm một giá trị nào sẽ khớp hơn. VieNeu hiện chỉ đọc tiếng Việt trực tiếp, không dịch và không nhận sắc thái Azure/Gemini.
+
+Backend local dùng Moto cho metadata/S3 mô phỏng, còn model chạy trên CPU máy dev. Cần cài dependencies vào đúng Python chạy `deployment/local/server.py` và bật `VOICE_CLONE_ENABLED` trong `.env.local`; xem [hướng dẫn local](../../deployment/local/README.md#vieneu-nhại-giọng-trên-local). Không dùng key Azure/Gemini cho provider này.
+
+Đường AWS đã có cờ mặc định tắt, template condition cho layer Python 3.12, model riêng trong JobsBucket, và quy trình `azure.py plan --voice-clone true` sau khi model được upload. Worker cần 3.072 MiB mặc định, timeout 900 giây và `/tmp` 2.048 MiB khi bật. Đây là code chưa được build/deploy hoặc kiểm quyền LabRole/AWS Academy; cần M1/M2/M3/M5 review trước khi vận hành. Chưa gọi là deployable hay AWS verified. Mã demo chung không cô lập hồ sơ; người dùng cùng mã có thể thấy/xóa profile.

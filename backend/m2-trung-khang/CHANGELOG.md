@@ -1,5 +1,18 @@
 # CHANGELOG — M2
 
+## 2026-11-16 — VOICE-02: smoke test VieNeu ONNX CPU (coded, locally tested)
+
+- Thêm script chuẩn bị artifacts từ revision pin của VieNeu-TTS v3 Turbo và MOSS ONNX codec, kiểm SHA-256 với các blob LFS có checksum công bố; tổng dung lượng 312 MiB, không đưa model vào Git. Thêm smoke script cho WAV 3–8 giây, xác nhận quyền dùng mẫu, sinh hai câu tiếng Việt thành MP3 và báo thời gian/RSS.
+- Người dùng yêu cầu toàn bộ dữ liệu test ở gốc repo; WAV gốc, mẫu WAV 6 giây, model, venv và MP3 được giữ trong `voice02-local/` (Git ignore). Downloader dùng revision VieNeu `61b85e3d937fbbacb387714180e8182823512523` và MOSS codec `ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae`. Tải xong 327,033,146 byte (312 MiB); SHA-256 của artifact có checksum công bố đều đạt.
+- Smoke test bằng giọng do người dùng cung cấp, WAV mono 24 kHz, 6 giây, 288,090 byte; Windows/Python 3.12, ONNX int8 CPU 4 threads, chạy offline sau khi tải model. Khởi tạo 7.78 giây, RSS ban đầu 510.3 MiB. Câu đầu tạo 2.4 giây audio trong 61.75 giây; câu hai tạo 2.8 giây audio trong 1.42 giây; peak RSS 1,713.2 MiB. Hai MP3 (38,784 và 45,312 byte) được ffprobe kiểm và giải mã hết bằng FFmpeg. Chưa có đánh giá người dùng về độ giống giọng; không gọi provider/AWS hay dịch vụ tính phí.
+- Chưa nối model thành provider sản phẩm. Template M2 hiện là Lambda ZIP, `WorkerMemoryMb` mặc định 256 MiB và code package hiện không có cơ chế tải model từ S3; cấu hình hiện hành không đủ chạy model. Phương án kỹ thuật cần đánh giá là model riêng trên S3 tải vào `/tmp`, Lambda memory cao hơn (số đo local peak đã vượt 1.6 GiB), cold start/chi phí và quyền LabRole; chưa kiểm quyền Academy, SAM package hoặc deploy thật. Không có bằng chứng container/ECR hay EC2 phù hợp. Chưa hoàn tất VOICE-02; chưa gọi là deployable/AWS verified.
+
+## 2026-11-16 — VieNeu backend candidate đã được nối vào luồng TTS (coded; chưa kiểm thử tích hợp)
+
+- Sau smoke test riêng, working tree hiện có adapter M2 `synthesize/providers/vieneu.py`, catalog VieNeu theo hồ sơ, tải model đã pin từ thư mục local hoặc Jobs bucket, checksum trước khi load và gọi CPU ONNX. Layer Python 3.12 được tạo khi bật `VoiceCloneEnabled`; worker có cấu hình riêng cho memory, timeout và `/tmp`.
+- Router M1/M5/M3 có candidate routes để tạo/liệt kê/xóa hồ sơ và kiểm request TTS; hồ sơ WAV được lưu private trong Jobs bucket. `deployment/local/server.py` truyền cờ và đường dẫn model local. `azure.py` có bước staging dependency Linux, còn script publish đưa model pin lên S3.
+- Đây mới là source/config; không chạy test của provider/API, SAM build/validate, kiểm quyền LabRole hoặc AWS thật trong lượt này. Layer size, cold start và runtime AWS Academy chưa xác minh; giữ `VOICE_CLONE_ENABLED=false` mặc định. Cần M1/M2/M3/M5 review trước khi bật hoặc deploy.
+
 ## 2026-11-15 — Sửa retry lease của worker (coded, locally tested)
 
 - Khi lỗi transient không được đánh dấu `retry_safe`, worker nhả lease bằng CAS trước khi raise để Lambda async retry có thể claim lại job. `final_attempt=True` giờ được xử lý trước nhánh này và ghi FAILED an toàn; lỗi có chủ lease mới vẫn bị CAS conflict, không bị ghi đè. Nhánh `retry_safe=true` tiếp tục lưu FAILED kèm thời gian retry cho M5; thêm test bảo vệ hành vi đó.

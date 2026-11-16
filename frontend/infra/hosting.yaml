@@ -119,6 +119,12 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachePolicyId: !FindInMap [CloudFrontPolicy, Ids, CachingDisabled]
             OriginRequestPolicyId: !FindInMap [CloudFrontPolicy, Ids, AllViewerExceptHostHeader]
+          - PathPattern: /voice-profiles*
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: !FindInMap [CloudFrontPolicy, Ids, CachingDisabled]
+            OriginRequestPolicyId: !FindInMap [CloudFrontPolicy, Ids, AllViewerExceptHostHeader]
           - PathPattern: /jobs/*
             TargetOriginId: api
             ViewerProtocolPolicy: https-only

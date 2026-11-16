@@ -55,6 +55,21 @@ def _retry_at(item, job, attempt):
     return int(time.time()) + max(delay, job.get("retryAfterSeconds", 0))
 
 
+def _audio_fraction(scope, item):
+    if item["status"] == "DONE":
+        return 1.0
+    if item["status"] not in {"SUBMITTED", "PROCESSING"} or not item.get("jobId"):
+        return 0.0
+    job = db.get_job(scope, item["jobId"])
+    if not job or job.get("status") != "PROCESSING":
+        return 0.0
+    total = job.get("chunkCount", 1)
+    complete = job.get("chunksDone", 0)
+    if type(total) is not int or total < 1 or type(complete) is not int:
+        return 0.0
+    return min(0.999, max(0.0, complete / total))
+
+
 def reconcile(scope, project_id, chapter_id, plan, index):
     item, etag = batches.get_item(scope, project_id, chapter_id, plan["planId"], index)
     if item["status"] in {"FAILED", "BLOCKED_QUOTA"}:
@@ -118,12 +133,14 @@ def result(scope, project_id, chapter_id, plan, limit=25, cursor=None):
     from story_run_state import stale as plan_stale
     stale = plan_stale(scope, project_id, chapter_id, plan)
     counts = {name: 0 for name in STATES}
+    audio_complete = 0.0
     indices, next_cursor = page(list(range(plan["total"])), limit, cursor)
     selected, items = set(indices), []
     with ThreadPoolExecutor(max_workers=12) as pool:
         scanned = pool.map(lambda index: reconcile(scope, project_id, chapter_id, plan, index), range(plan["total"]))
         for index, item in enumerate(scanned):
             counts[item["status"]] += 1
+            audio_complete += _audio_fraction(scope, item)
             if index not in selected:
                 continue
             value = {key: item.get(key) for key in ("index", "segmentId", "revision", "order", "charCount", "jobId")}
@@ -146,6 +163,6 @@ def result(scope, project_id, chapter_id, plan, limit=25, cursor=None):
             "claimed": counts["SUBMITTING"], "submitted": counts["SUBMITTED"],
             "processing": counts["PROCESSING"], "done": counts["DONE"], "failed": counts["FAILED"],
             "blockedQuota": counts["BLOCKED_QUOTA"], "uncertain": counts["UNCERTAIN"],
-            "percentComplete": round(100 * counts["DONE"] / plan["total"], 1),
+            "percentComplete": round(100 * audio_complete / plan["total"], 2),
             "maxAttempts": int(os.environ.get("STORY_MAX_ATTEMPTS", "3")),
             "items": items, "nextCursor": next_cursor}

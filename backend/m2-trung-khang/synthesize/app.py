@@ -80,10 +80,13 @@ def _synthesize(job: dict, context) -> bytes:
         raise PermanentProviderError(str(error), "Giọng đọc không còn hỗ trợ sắc thái hoặc cường độ đã chọn. Hãy tải lại danh sách giọng.") from None
     if style == "auto" and entry["provider"] != "gemini":
         raise PermanentProviderError("EMOTION_UNAVAILABLE", "Chưa xác định được sắc thái giọng đọc.")
-    timeout = min(PROVIDER_TIMEOUT_SECONDS, _remaining_seconds(context) - CLEANUP_SECONDS)
+    provider_limit = 180 if entry["provider"] == "vieneu" else PROVIDER_TIMEOUT_SECONDS
+    timeout = min(provider_limit, _remaining_seconds(context) - CLEANUP_SECONDS)
     if timeout <= 0:
         raise TransientProviderError("WORKER_TIMEOUT", "Không đủ thời gian xử lý, hệ thống sẽ thử lại.")
-    provider = get_provider(entry, timeout) if style == "neutral" else get_provider(entry, timeout, style=style, style_intensity=intensity)
+    options = {"user_id": job.get("userId"), "voice_profile_id": job.get("voiceProfileId"),
+               "voice_clone": job.get("voiceClone")}
+    provider = get_provider(entry, timeout, **options) if style == "neutral" else get_provider(entry, timeout, style=style, style_intensity=intensity, **options)
     return provider.synthesize(text, voice, speed)
 
 

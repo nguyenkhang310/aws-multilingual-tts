@@ -8,7 +8,8 @@ from .elevenlabs import ElevenLabsProvider
 from .gemini import GeminiTTSProvider
 
 
-def get_provider(entry: dict, timeout: float, style=None, style_intensity=1.0):
+def get_provider(entry: dict, timeout: float, style=None, style_intensity=1.0, *, user_id=None,
+                 voice_profile_id=None, voice_clone=None):
     """Tạo provider theo mục ngôn ngữ trong registry."""
     if entry.get("provider") == "azure":
         return AzureSpeechProvider(
@@ -26,4 +27,11 @@ def get_provider(entry: dict, timeout: float, style=None, style_intensity=1.0):
         )
     if entry.get("provider") == "gemini":
         return GeminiTTSProvider(entry["languageCode"], timeout, style, style_intensity)
+    if entry.get("provider") == "vieneu":
+        from tts_common import voice_profiles
+        from .vieneu import VieNeuProvider
+        profile = voice_profiles.get(user_id, voice_profile_id)
+        if not profile or profile.get("status") != "READY":
+            raise PermanentProviderError("VOICE_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ giọng.")
+        return VieNeuProvider(user_id, profile, voice_clone or {"denoise": True, "useRefCodes": True, "temperature": 0.8}, timeout)
     raise PermanentProviderError("PROVIDER_NOT_ENABLED", "Nhà cung cấp giọng đọc chưa được bật.")

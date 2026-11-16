@@ -3,6 +3,7 @@ import { MAX_CHARS, type Correction, type Input, type Job, type Language, type R
 import { sha256Hex } from './sha256';
 import { SubmissionLedger, isSubmissionRejected } from '../../../shared/submissions';
 import { checkedRecognition, type DocumentPage, type DocumentResult } from '../../../shared/vision';
+import { checkedVoiceProfile, checkedVoiceProfiles, type VoiceProfile } from '../../../shared/voice-clone';
 const submissions = new SubmissionLedger();
 submissions.configure({}, async () => { throw new Error('Chưa đọc được mã yêu cầu đã lưu. Hãy mở lại ứng dụng trước khi tạo bản thu.'); });
 export const configureSubmissionStore = submissions.configure.bind(submissions);
@@ -57,6 +58,21 @@ export const api = {
       if (error instanceof ApiError) throw error;
       throw new ApiError(error instanceof Error ? error.message : 'Danh sách giọng đọc chưa hợp lệ.', 'INVALID_RESPONSE');
     }
+  },
+  async createVoiceProfile(name: string, audioBase64: string, consent: boolean): Promise<VoiceProfile> {
+    if (DEMO) throw new ApiError('Hãy kết nối backend để lưu hồ sơ giọng.', 'VOICE_CLONE_NOT_CONFIGURED');
+    return checkedVoiceProfile(await request('/voice-profiles', {
+      method: 'POST', body: JSON.stringify({ name, lang: 'vi-VN', audioBase64, consent }),
+    }, 45000));
+  },
+  async voiceProfiles(): Promise<VoiceProfile[]> {
+    if (DEMO) return [];
+    return checkedVoiceProfiles(await request('/voice-profiles'));
+  },
+  async removeVoiceProfile(id: string): Promise<void> {
+    if (DEMO) throw new ApiError('Hãy kết nối backend để xóa hồ sơ giọng.', 'VOICE_CLONE_NOT_CONFIGURED');
+    const result = await request<{ deleted: boolean }>(`/voice-profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (result?.deleted !== true) throw new ApiError('Máy chủ chưa xác nhận xóa hồ sơ giọng.', 'INVALID_RESPONSE');
   },
   async correct(text: string, lang: string, signal?: AbortSignal): Promise<Correction> {
     const data = await request<Correction>('/text/correct', { method: 'POST', body: JSON.stringify({ text, lang }), signal }, 12000);

@@ -59,7 +59,7 @@ Repository được tổ chức theo trách nhiệm của năm thành viên. Fro
 
 Code, kiểm thử local và demo trong một phiên là các mức bằng chứng khác nhau. Khả năng tạo mới toàn bộ stack, dựng lại sau reset và hoạt động trên thiết bị thật cần được kiểm riêng. Trạng thái và tiêu chí nghiệm thu của từng phần nằm trong README/CHANGELOG của thành viên.
 
-**Dùng Audio Truyện:** web mở **Audio Truyện**; app mở **Công cụ → Audio Truyện**. Luồng chung là **Thư viện → Truyện → Chương**, với các mục **Nghe & tạo**, **Nội dung**, **Bản dịch**. Nút nghe và thanh phát dùng chung một phiên; thu nhỏ không dừng tiếng. Nhập chương, tùy chọn giọng và quản lý truyện mở ở bảng riêng. Xuất bản sao trước khi kết thúc Lab; bản sao chứa nội dung và bản dịch đã duyệt, không gồm MP3 hoặc ảnh bìa. Nhập nhiều tệp và gộp MP3 hiện có trên web. Xem [hướng dẫn M4](frontend/README.md) và [hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+**Dùng Audio Truyện:** web mở **Audio Truyện**; app mở **Công cụ → Audio Truyện**. Luồng chung là **Thư viện → Truyện → Chương**, với các mục **Nghe & tạo**, **Nội dung**, **Bản dịch**. Nút nghe và thanh phát dùng chung một phiên; thu nhỏ không dừng tiếng. Khi mọi đoạn hoàn tất, backend ghép thành một MP3 chương trong S3; tên tải về theo dạng `chuong XX - <tên truyện>.mp3`. Tiến độ hiển thị cả chunk TTS đã hoàn tất. Backup giữ nội dung gốc, glossary, bản dịch đã duyệt và draft dịch; không gồm MP3, ảnh bìa hoặc URL tạm. Xem [hướng dẫn M4](frontend/README.md) và [hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
 
 ## Kiến trúc
 

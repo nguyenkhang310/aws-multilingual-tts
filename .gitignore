@@ -46,3 +46,6 @@ frontend/app/public/ocr/
 frontend/app/public/pdf/
 
 story/
+
+# VOICE-02 local-only model, voice sample, virtualenv, cache and generated audio
+/voice02-local/

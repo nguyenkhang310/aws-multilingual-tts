@@ -1,5 +1,23 @@
 # CHANGELOG — M3
 
+## 2026-11-16 — STORY-05 tên file chương
+
+- URL tải MP3 chương chỉ định Content-Disposition UTF-8 theo `chuong XX - <tên truyện>.mp3`; lọc ký tự không hợp lệ từ tên dự án. Không ghi tên vào metadata audio.
+- M3 suite 65/65 và M5 suite 174/174 PASS bằng fake S3/Lambda; không gọi AWS/provider thật.
+
+## 2026-11-16 — STORY-05 S3 MP3 chương (local)
+
+- Thêm helper kiểm frame MPEG Layer III, S3 checkpoint/staging/multipart và URL ký; fake S3 mô phỏng multipart đủ để kiểm gộp/chạy lại. Audio bucket thêm tự hủy multipart chưa hoàn tất sau một ngày; retention MP3 tạm vẫn theo `RetentionDays` chung. M3 suite 65/65 PASS, M5 suite 174/174 PASS. Cần M3 review quyền/lifecycle và nghiệm thu S3 thật; cfn-lint/SAM CLI chưa có trong local.
+
+## 2026-11-16 — Lưu draft import và giữ legacy cast
+
+- Common S3 Layer nhận các chunk draft đã kiểm, tạo plan mới không có run/lease; RUNNING/UNCERTAIN vẫn cần đối soát và FAILED/quota không tự retry. Restore glossary giữ revision nguồn; project có thể lưu `cast` cũ để round-trip backup dù UI đã gỡ.
+- M3 suite: 65/65 PASS với fake S3. Không gọi AWS/provider.
+
+## 2026-11-16 — STORY-02 persistence contract reviewed
+
+- Existing S3 CAS primitives store translation glossary, immutable plans/chunks, draft history and approved revisions in the audiobook Jobs prefix. Approved manifest is written before its pointer is CAS-updated. No new bucket/table/service added; suite at task check: 65/65 PASS.
+
 ## 2026-11-15 — Chia đoạn Audio Truyện theo câu (coded, locally tested)
 
 - Mỗi story segment tối đa 10.000 ký tự UTF-16, ưu tiên kết thúc ở dấu câu; M2 vẫn chia nhỏ bên trong một job theo provider. Chương đã lưu không tự đổi ranh giới, phải lưu lại nội dung nếu muốn chia lại.

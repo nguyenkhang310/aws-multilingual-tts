@@ -1,5 +1,7 @@
 # M3 — Trung Đức: S3 jobs/audio, common và history
 
+STORY-02 lưu glossary dự án, plan/run/chunk dịch, draft và các revision đã duyệt dưới prefix Audio Truyện hiện có trong jobs bucket. Ghi theo object riêng và ETag/CAS; approved pointer chỉ cập nhật sau khi từng segment/revision đã được lưu. Nguồn/chunk plan cũ giữ nguyên khi glossary hoặc source thay đổi. Hạn mức/route/schema xem [CONVENTIONS](../../docs/CONVENTIONS.md#story-02--dịch-truyện-theo-chương-và-tạo-audio-tiếng-việt-16112026).
+
 **Cập nhật 2026-11-08.** Common S3 repository/history đã có code và local test theo log M3; retention/reset rehearsal còn mở. Task chỉ tick khi có output và kiểm chứng tương ứng.
 
 **Cần chốt với giảng viên:** đề yêu cầu API Gateway/Polly/DynamoDB, còn bản Sandbox đang dùng dịch vụ thay thế. Xem [đối chiếu yêu cầu](../../AGENTS.md#3-yêu-cầu-đề-bài-và-trạng-thái-phải-diễn-đạt-đúng); không tự đổi hạ tầng khi chưa có môi trường/quyền và phân công mới.
@@ -110,3 +112,5 @@ Tích hợp M4 được giao 11/11 bổ sung metadata tùy chọn `style`, check
 ## Bàn giao Gemini TTS — 13/11/2026
 
 Registry Gemini đóng gói trong Layer, giữ bản nguồn M2 khớp byte. Metadata provider/engine dùng trường sẵn có, polling/history công bố lại để phân biệt bản thu; không đổi schema version, kho dữ liệu hoặc presign. `expression.py` hỗ trợ styles Gemini và counter CAS riêng `tts-gemini-usage/` cho từng call/chunk/retry; Azure giữ luồng cũ. M3 review quota concurrency, retention và đọc/xóa parts cùng history trên Sandbox được giao; bằng chứng tích hợp ở CHANGELOG M4. [Hợp đồng](../../docs/CONVENTIONS.md#gemini-tts-tùy-chọn--bổ-sung-13112026).
+
+STORY-05 dùng `story_mp3.py` để xác minh/loại header MP3 cho từng đoạn và `story_chapter_audio.py` để lưu checkpoint, MP3 tạm, multipart và URL ký. M3 cần review quyền S3 multipart, lifecycle MP3 tạm và giới hạn audio bucket trước deploy. Không thêm bucket hoặc schema job mới.

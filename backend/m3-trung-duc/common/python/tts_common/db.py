@@ -195,7 +195,7 @@ def fail_job(job, message, *, error_code=None, retryable=False, retry_after_seco
 
 
 def create_job(user_id, text, lang, voice, speed, translate_to=None, provider=None, engine=None, job_id=None,
-               style=None, style_intensity=1.0, story_context=None):
+               style=None, style_intensity=1.0, story_context=None, voice_profile_id=None, voice_clone=None):
     """Tạo job PENDING; If-None-Match chặn ghi đè nếu trùng mã."""
     job_id = job_id if job_id is not None else make_job_id()
     if not are_valid_ids(user_id, job_id):
@@ -231,6 +231,7 @@ def create_job(user_id, text, lang, voice, speed, translate_to=None, provider=No
         "dispatchState": "CREATED",
         "deleting": False,
         **({"storyContext": story_context} if story_context else {}),
+        **({"voiceProfileId": voice_profile_id, "voiceClone": voice_clone} if voice_profile_id else {}),
     }
     aws.s3().put_object(
         Bucket=config.JOBS_BUCKET,

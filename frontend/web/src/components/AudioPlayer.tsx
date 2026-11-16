@@ -5,6 +5,14 @@ import { Button, Icon, Slider, ToolArt } from "./ui";
 import type { HistoryItem } from "../lib/types";
 import { markTtsPlayable } from '../../../shared/tts-performance';
 
+export function audioFilename(item: HistoryItem) {
+  if (item.storyChapterId && item.title) {
+    const title = item.title.replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (title) return `${title}.mp3`;
+  }
+  return `ban-thu-${item.jobId}.mp3`;
+}
+
 export default function AudioPlayer({
   item,
   queue,
@@ -66,7 +74,7 @@ export default function AudioPlayer({
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = `ban-thu-${item.jobId}.mp3`;
+      a.download = audioFilename(item);
       document.body.append(a);
       a.click();
       a.remove();
@@ -187,9 +195,9 @@ export default function AudioPlayer({
         <Button
           className="download-button"
           disabled={!item || downloading || !item.audioUrl}
-          title={devicePlayback ? "Nghe thử trên thiết bị chưa có tệp MP3" : "Tải bản thu MP3"}
+          title={devicePlayback ? "Nghe thử trên thiết bị chưa có tệp MP3" : item?.storyChapterId ? "Tải riêng đoạn đang nghe" : "Tải bản thu MP3"}
           onClick={download}
-          aria-label="Tải MP3"
+          aria-label={item?.storyChapterId ? "Tải đoạn MP3 này" : "Tải MP3"}
         >
           {downloading ? <Icon name="clock" size={18} /> : <Icon name="download" size={18} />}
           <span>MP3</span>

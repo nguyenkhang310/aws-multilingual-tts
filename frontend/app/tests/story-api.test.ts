@@ -3,7 +3,35 @@ import test from 'node:test';
 import { setDemoToken } from '../src/lib/api';
 import { storyApi } from '../src/lib/story-api';
 import { storyBatchApi } from '../src/lib/story-batch-api';
-import type { StoryProject } from '../../shared/story';
+import { chapterDisplayTitle, chapterLabel, chapterNumberFromFilename, type StoryProject } from '../../shared/story';
+
+test('Tên chương từ file không lặp tiền tố, giữ tên khác và số chương đã chọn', () => {
+  assert.equal(chapterNumberFromFilename('Chương 01 – Chiếc ô nơi bến cũ', 7), 1);
+  assert.equal(chapterNumberFromFilename('Story 2026 - Chapter 02 - Bến nước', 7), 2);
+  assert.equal(chapterNumberFromFilename('Chiếc ô nơi bến cũ', 7), 7);
+  assert.equal(chapterDisplayTitle(1, 'Chương 01 – Chiếc ô nơi bến cũ'), 'Chiếc ô nơi bến cũ');
+  assert.equal(chapterLabel(1, 'Chương 01 – Chiếc ô nơi bến cũ'), 'Chương 01 · Chiếc ô nơi bến cũ');
+  assert.equal(chapterLabel(1, 'Chapter 01: Chapter 01 - Bến cũ'), 'Chương 01 · Bến cũ');
+  assert.equal(chapterLabel(2, 'Chương 03 - Tên khác'), 'Chương 02 · Chương 03 - Tên khác');
+  assert.equal(chapterLabel(4, 'Chương 04'), 'Chương 04');
+});
+
+test('App Audio Truyện lấy URL MP3 chương theo đúng plan', async () => {
+  setDemoToken('fixture-token');
+  const previous = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    calls.push(url);
+    return { ok: true, json: async () => ({ status: 'DONE', audioUrl: 'https://signed.test/audio' }) } as Response;
+  }) as typeof fetch;
+  try {
+    const chapter = { projectId: 'a'.repeat(32), chapterId: 'b'.repeat(32) } as Parameters<typeof storyBatchApi.chapterAudio>[0];
+    const planId = 'c'.repeat(32);
+    assert.equal((await storyBatchApi.chapterAudio(chapter, planId)).status, 'DONE');
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].endsWith(`/audio-plans/${planId}/chapter-audio`));
+  } finally { globalThis.fetch = previous; setDemoToken(''); }
+});
 
 test('App Audio Truyện gọi cùng backend để tạo project và chapter', async () => {
   setDemoToken('fixture-token');

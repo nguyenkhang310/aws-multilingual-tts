@@ -24,7 +24,9 @@ Cửa sổ phụ có một tiêu đề và phần nội dung cuộn riêng. Nh�
 
 App quay lại theo từng cấp Chương → Truyện → Thư viện → trang trước. Lưu lần đầu giữ nguyên ô nhập và mục đang chọn; phản hồi tải muộn không mở lại màn đã đóng. Web kiểm tra bản nháp khi dùng Back/đổi trang, chọn lại trang hiện tại không khởi tạo lại nội dung. Đóng cửa sổ trả focus về nút mở mà không cuộn lệch trang.
 
-Ảnh bìa JPEG/PNG tối đa 5 MiB tải trực tiếp qua ticket S3 private; API chỉ lưu metadata, URL xem có hạn và được làm mới một lần khi lỗi. Backup gồm nội dung, metadata và bản dịch đã duyệt, **không chứa MP3, ảnh bìa hoặc URL đã ký**. Local Moto mất dữ liệu khi dừng; Sandbox có thể xóa cuối phiên nên cần lưu backup. Callback STORY-01C đã có code và test giả lập, chưa xác minh destination trên AWS; mất callback vẫn cần đối soát/tick. Xem [batch](../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026) và [ảnh bìa](../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
+Ảnh bìa JPEG/PNG tối đa 5 MiB tải trực tiếp qua ticket S3 private; API chỉ lưu metadata, URL xem có hạn và được làm mới một lần khi lỗi. Backup gồm nội dung, glossary, bản dịch đã duyệt và draft dịch đã lưu; **không chứa MP3, ảnh bìa, URL đã ký hoặc trạng thái job/run/lease**. Import tạo project ID mới và draft plan ở trạng thái chờ, không gọi Translator hay tạo audio. Local Moto mất dữ liệu khi dừng; Sandbox có thể xóa cuối phiên nên cần lưu backup. Callback STORY-01C đã có code và test giả lập, chưa xác minh destination trên AWS; mất callback vẫn cần đối soát/tick. Xem [batch](../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026) và [ảnh bìa](../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
+
+Khi các đoạn audio đều DONE, backend ghép thành một MP3 chương trong bucket audio. Web tạo/tiếp tục ghép theo từng lượt có giới hạn; app dùng cùng trạng thái và tải/chia sẻ MP3 chương. Tên tệp là `chuong XX - <tên truyện>.mp3`. Tiến độ từng phần phản ánh checkpoint `chunksDone/chunkCount` của worker. Đây là code đã kiểm thử bằng fake S3; cần nghiệm thu trên Sandbox và thiết bị thật.
 
 **Tự nhận diện ngôn ngữ** dùng ELD 2.1.1 tại thiết bị, mặc định bật ở phiên soạn mới. Model small được khóa hash bởi `frontend/scripts/verify-eld-model.mjs`, đóng gói cùng web/Expo, không dùng API/key. Kết quả chưa chắc cần chọn thủ công; không gửi `und` cho TTS. Truyện mới chọn Auto giữ `sourceLang=und`; web/app nhận diện chương đầu rồi yêu cầu người dùng xác nhận. Benchmark offline: `cd frontend/app && node --import tsx scripts/benchmark-language.mts`.
 
@@ -168,6 +170,14 @@ Trong app Cài đặt → Kết nối → Mã truy cập; nhập mã do chủ la
 Trang chủ: chạm trực tiếp vào sóng âm trong thẻ **Tạo giọng đọc** để mở trình soạn thảo. Sóng phản hồi khi chạm, chuyển sang màn soạn thảo toàn màn hình; chế độ giảm chuyển động bỏ hiệu ứng. Văn bản mẫu nằm trong một nhóm để giảm chiều cao và số khung riêng.
 
 Web có bộ chọn **Nguồn giọng đọc** trong cài đặt giọng; app chọn **Azure/Gemini** phía trên ô giọng hoặc ở trang Giọng đọc. Gemini có 30 giọng theo tài liệu, 71 lựa chọn ngôn ngữ/vùng và sắc thái trong cài đặt giọng. Bản nháp giữ nguyên khi đổi nguồn. Gemini chưa bật báo rõ; không dùng giọng thiết bị để giả nghe thử Gemini. Catalog tách theo provider và chỉ hiển thị một ngôn ngữ khi duyệt giọng Gemini để tránh lặp hàng nghìn thẻ.
+
+### Nhại giọng VieNeu — thử nghiệm local/AWS
+
+Khi backend bật `VOICE_CLONE_ENABLED`, web/app có nguồn **VieNeu · Nhại giọng**. Trong danh sách giọng, thêm WAV PCM 16-bit mono/stereo dài 3–8 giây, tối đa 2 MiB, xác nhận quyền sử dụng rồi chọn hồ sơ vừa thêm. Mẫu/hồ sơ lưu riêng trong Jobs bucket; voice clone chỉ đọc tiếng Việt và không hỗ trợ dịch hoặc sắc thái Azure/Gemini.
+
+Sau bản nghe đầu, giữ nguyên câu và đổi **một** điều chỉnh để dễ so sánh. Web/app có **Bám cách nói mẫu**, **Lọc nhiễu mẫu** và **Độ ổn định**; mức ổn định cao giảm biến thiên khi tạo. Cấu hình khác tạo request khác; phát lại cùng nội dung/cấu hình dùng lại kết quả idempotent. Các bản khác nhau giữ trong Bản thu. Điều khiển là tham số VieNeu, không phải điểm số chất lượng và không bảo đảm tăng độ giống. Cùng mã demo hiện dùng chung scope `demo`; người có cùng mã có thể thấy hoặc xóa hồ sơ.
+
+Local cần cài VieNeu vào Python `.venv` dùng bởi `npm run dev` và đặt model trong `voice02-local/`; xem [hướng dẫn VieNeu local](../deployment/local/README.md#vieneu-nhại-giọng-trên-local). AWS có code candidate để đóng gói dependency Linux, giữ model riêng trong Jobs bucket và bật cờ qua SAM. Chưa chạy SAM build/validate, kiểm quyền LabRole hoặc deploy; không coi là AWS verified hay deployable đã nghiệm thu.
 
 Kiểm tra trong thư mục app:
 

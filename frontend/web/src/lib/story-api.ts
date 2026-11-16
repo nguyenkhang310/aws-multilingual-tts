@@ -1,7 +1,7 @@
 import { ApiError, request } from './api';
 import { checkedStoryCoverType, storyCoverStorageError, type StoryCover, type StoryProject } from '../../../shared/story';
 import { createStoryClient } from '../../../shared/story-client';
-export { checkedBackup, storyChunks } from '../../../shared/story';
+export { checkedBackup, safeStoryCast, serializeStoryBackup, storyChunks } from '../../../shared/story';
 const key = () => globalThis.crypto.randomUUID().replaceAll('-', '');
 const coverPath = (projectId: string) => `/audiobooks/${projectId}/cover`;
 const json = (value: unknown) => JSON.stringify(value);

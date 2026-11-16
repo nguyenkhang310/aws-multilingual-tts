@@ -23,6 +23,8 @@ export interface Language {
 }
 export interface SynthesizeInput {
   provider?: string;
+  voiceProfileId?: string;
+  voiceClone?: import('../../../shared/voice-clone').VoiceCloneSettings;
   style?: string;
   styleIntensity?: number;
   text: string;

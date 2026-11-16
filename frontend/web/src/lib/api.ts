@@ -3,6 +3,7 @@ import { demoLanguages, MAX_CHARS, readStored, storeValue } from "./data";
 import type { HistoryItem, HistoryResponse, Job, Language, SynthesizeInput, Stats, TextCorrection, Translation } from "./types";
 import { SubmissionLedger, isSubmissionRejected } from '../../../shared/submissions';
 import { checkedRecognition, type DocumentPage, type DocumentResult } from '../../../shared/vision';
+import { checkedVoiceProfile, checkedVoiceProfiles, type VoiceProfile } from '../../../shared/voice-clone';
 
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
 export const DEMO = !API_BASE;
@@ -218,6 +219,21 @@ export const api = {
       if (error instanceof ApiError) throw error;
       throw new ApiError(error instanceof Error ? error.message : 'Danh sách giọng đọc chưa hợp lệ.', 'INVALID_RESPONSE');
     }
+  },
+  async createVoiceProfile(name: string, audioBase64: string, consent: boolean): Promise<VoiceProfile> {
+    if (DEMO) throw new ApiError('Hãy kết nối backend để lưu hồ sơ giọng.', 'VOICE_CLONE_NOT_CONFIGURED');
+    return checkedVoiceProfile(await request('/voice-profiles', {
+      method: 'POST', body: JSON.stringify({ name, lang: 'vi-VN', audioBase64, consent }),
+    }, 45000));
+  },
+  async voiceProfiles(): Promise<VoiceProfile[]> {
+    if (DEMO) return [];
+    return checkedVoiceProfiles(await request('/voice-profiles'));
+  },
+  async removeVoiceProfile(id: string): Promise<void> {
+    if (DEMO) throw new ApiError('Hãy kết nối backend để xóa hồ sơ giọng.', 'VOICE_CLONE_NOT_CONFIGURED');
+    const result = await request<{ deleted: boolean }>(`/voice-profiles/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (result?.deleted !== true) throw new ApiError('Máy chủ chưa xác nhận xóa hồ sơ giọng.', 'INVALID_RESPONSE');
   },
   async synthesize(input: SynthesizeInput, context = ''): Promise<Job> {
     if (!DEMO) {

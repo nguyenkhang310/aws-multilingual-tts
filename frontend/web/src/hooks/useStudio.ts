@@ -11,6 +11,7 @@ import { detectLanguage, type LanguageDetection } from '../lib/language-detectio
 import { readDocumentPage, type DocumentMode } from '../../../shared/vision';
 import { markTtsDone, ttsTiming } from '../../../shared/tts-performance';
 import { correctionNotice as correctionFailureNotice, skippableCorrection } from '../../../shared/correction-check';
+import { DEFAULT_VOICE_CLONE, type VoiceCloneSettings } from '../../../shared/voice-clone';
 
 type Review = { input: SynthesizeInput; correction: TextCorrection; documentText: string; partIndex: number; partLimit?: number; translation?: boolean; sourceLang?: string; approvalKey?: string };
 type Notify = (message: string, error?: boolean) => void;
@@ -29,7 +30,7 @@ export function useSession(notify: Notify) {
   const [catalog, setLanguages] = useState<Language[]>([]);
   const [selectedProvider, setProvider] = useState('');
   const provider = catalog.some(l => l.provider === selectedProvider) ? selectedProvider : catalog[0]?.provider ?? '';
-  const languages = useMemo(() => catalog.filter(l => provider === 'gemini' ? l.provider === 'gemini' : l.provider !== 'gemini'), [catalog, provider]);
+  const languages = useMemo(() => catalog.filter(l => l.provider === provider), [catalog, provider]);
   const providers = useMemo(() => providerOptions(catalog), [catalog]);
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [voiceError, setVoiceError] = useState("");
@@ -204,6 +205,7 @@ export function useEditor(
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [selectedStyle, setStyle] = useState('neutral');
   const [styleIntensity, setStyleIntensity] = useState(1);
+  const [voiceClone, setVoiceClone] = useState<VoiceCloneSettings>(DEFAULT_VOICE_CLONE);
   const [checkSpelling, setCheckSpelling] = useState(false);
   const [correctionNotice, setCorrectionNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -288,8 +290,9 @@ export function useEditor(
   const selectedVoice = language?.voices.find(v => v.id === voice);
   const styles = expressionOptions(selectedVoice?.styles, language?.autoEmotionEnabled);
   const style = styles.some(item => item.value === selectedStyle) ? selectedStyle : 'neutral';
-  const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(language?.provider === 'gemini' ? { provider: 'gemini' } : {}) };
-  const approvalKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([previewKey(index, source, sourceLang), voice, speed, expression]);
+  const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(language?.provider === 'gemini' || language?.provider === 'vieneu' ? { provider: language.provider } : {}) };
+  const activeClone = language?.provider === 'vieneu' ? { voiceProfileId: voice, voiceClone } : {};
+  const approvalKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([previewKey(index, source, sourceLang), voice, speed, expression, activeClone]);
   useEffect(() => {
     setVoice((previous) =>
       language?.voices.some((v) => v.id === previous) ? previous : voiceNeedsSelection ? '' : language?.voices[0]?.id || "",
@@ -344,8 +347,9 @@ export function useEditor(
     if (pending && (current?.documentText !== text || (current.translation
       ? current.sourceLang !== lang || pending.lang !== translateTo
       : pending.lang !== lang || pending.translateTo !== translateTo) || pending.voice !== voice ||
-      pending.speed !== speed || (pending.style ?? 'neutral') !== style || (pending.styleIntensity ?? 1) !== (expression.styleIntensity ?? 1) || pending.provider !== expression.provider || current?.partLimit !== partLimit)) cancelReview();
-  }, [text, lang, voice, speed, style, styleIntensity, translateTo, partLimit, expression.provider]);
+      pending.speed !== speed || (pending.style ?? 'neutral') !== style || (pending.styleIntensity ?? 1) !== (expression.styleIntensity ?? 1) || pending.provider !== expression.provider ||
+      JSON.stringify(pending.voiceClone) !== JSON.stringify(language?.provider === 'vieneu' ? voiceClone : undefined) || current?.partLimit !== partLimit)) cancelReview();
+  }, [text, lang, voice, speed, style, styleIntensity, translateTo, partLimit, expression.provider, voiceClone]);
 
   async function generate() {
     const preprocessingStarted = performance.now();
@@ -359,8 +363,9 @@ export function useEditor(
     try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
     if (!sourceLang || beforeDetection !== revision.current || languagesRef.current !== languages) return;
     const activeLanguage = languages.find(item => item.lang === (translateTo || sourceLang));
+    if (translateTo && activeLanguage?.provider === 'vieneu') { setError('VieNeu hiện chỉ tạo giọng tiếng Việt trực tiếp; hãy chọn Azure hoặc Gemini cho Dịch và đọc.'); return; }
     const activeVoice = activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
-    const activeExpression = activeVoice === voice ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
+    const activeExpression = activeVoice === voice ? expression : activeLanguage?.provider === 'gemini' || activeLanguage?.provider === 'vieneu' ? { provider: activeLanguage.provider } : {};
     const activeParts = splitDocument(text, activeLanguage?.maxChars);
     const part = activeParts[selectedPart] ?? '';
     const invalid = validateInput(part, speed);
@@ -378,7 +383,8 @@ export function useEditor(
       setError("Hãy chọn ngôn ngữ đích khác với ngôn ngữ gốc.");
       return;
     }
-    const input = { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression };
+    const cloneOptions = activeLanguage?.provider === 'vieneu' ? { voiceProfileId: activeVoice, voiceClone } : {};
+    const input = { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression, ...cloneOptions };
     ttsTiming('frontend_preprocessing', preprocessingStarted, language?.provider ?? '', 'READY');
     return translateTo ? previewPart(input, selectedPart) : runSynthesis(input, checkSpelling);
   }
@@ -533,8 +539,11 @@ export function useEditor(
     try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
     if (!sourceLang || beforeDetection !== revision.current || languagesRef.current !== languages) return;
     const activeLanguage = languages.find(item => item.lang === (translateTo || sourceLang));
+    if (translateTo && activeLanguage?.provider === 'vieneu') { setError('VieNeu hiện chỉ tạo giọng tiếng Việt trực tiếp; hãy chọn Azure hoặc Gemini cho Dịch và đọc.'); return; }
     const activeVoice = activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
-    const activeExpression = activeVoice === voice ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
+    const activeExpression = activeVoice === voice ? expression
+      : activeLanguage?.provider === 'gemini' || activeLanguage?.provider === 'vieneu' ? { provider: activeLanguage.provider } : {};
+    const activeClone = activeLanguage?.provider === 'vieneu' ? { voiceProfileId: activeVoice, voiceClone } : {};
     const activeParts = splitDocument(text, activeLanguage?.maxChars);
     if (translateTo && language?.translationEnabled === false) { setError("Chưa kết nối Azure Translator. Nhờ quản trị viên cấu hình dịch vụ dịch."); return; }
     if (translateTo === sourceLang) { setError('Hãy chọn ngôn ngữ đích khác với ngôn ngữ gốc.'); return; }
@@ -550,7 +559,7 @@ export function useEditor(
       await previewPart({ text: activeParts[next], lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression }, next);
       return;
     }
-    const inputs = activeParts.map((part, index) => ({ index, input: { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression } })).filter(({ input }) => input.text.trim());
+    const inputs = activeParts.map((part, index) => ({ index, input: { text: part, lang: sourceLang, voice: activeVoice, speed, translateTo, ...activeExpression, ...activeClone } })).filter(({ input }) => input.text.trim());
     if (inputs.some(({ input }) => validateInput(input.text, input.speed))) { setError('Thiết lập phần đọc không hợp lệ.'); return; }
     batchLock.current = true; stopBatch.current = false;
     let done = inputs.filter(({ input, index }) => completed.current.has(completionKey(index, input))).length;
@@ -650,7 +659,7 @@ export function useEditor(
     chooseVoice,
     speed,
     setSpeed,
-    style, setStyle, styles, styleIntensity, setStyleIntensity,
+    style, setStyle, styles, styleIntensity, setStyleIntensity, voiceClone, setVoiceClone,
     checkSpelling, setCheckSpelling,
     correctionNotice,
     busy: busy || !!batch,

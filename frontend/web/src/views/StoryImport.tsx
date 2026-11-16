@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { StoryChapter, StoryProject } from '../../../shared/story';
+import { chapterDisplayTitle, chapterLabel, chapterNumberFromFilename, type StoryChapter, type StoryProject } from '../../../shared/story';
 import { readStoryFile } from '../lib/story-document';
 import { storyApi } from '../lib/story-api';
 import FilePickerButton from '../components/FilePickerButton';
@@ -61,9 +61,8 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
       for (const file of files) {
         setProgress(`Đang đọc ${file.name}…`);
         const name = file.name.replace(/\.[^.]+$/, '');
-        const match = name.match(/(?:ch(?:apter|uong|ương)?\s*[-_. ]*)?(\d{1,5})/i);
-        const number = match ? Number(match[1]) : result.length + 1;
-        result.push({ name: file.name, title: name.slice(0, 120), number, key: crypto.randomUUID(),
+        const number = chapterNumberFromFilename(name, result.length + 1);
+        result.push({ name: file.name, title: (chapterDisplayTitle(number, name) || name).slice(0, 120), number, key: crypto.randomUUID(),
           order: number, text: await readStoryFile(file, project.sourceLang === 'und' ? 'vi-VN' : project.sourceLang) });
       }
       if (currentProject.current.sourceLang === 'und') await redetect(result[0].text);
@@ -128,7 +127,7 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
       {!confirmed && <button className="secondary-button" disabled={!draftLang || busy} onClick={() => setConfirmed(true)}>Xác nhận ngôn ngữ</button>}
     </div>}
     {!!drafts.length && <div className="story-import-drafts">{drafts.map((draft, index) => <details className="story-draft" open={drafts.length === 1} key={`${draft.name}-${index}`}>
-      <summary><strong>Chương {String(draft.number).padStart(2, '0')} · {draft.title || 'Chưa đặt tên'}</strong></summary>
+      <summary><strong>{chapterLabel(draft.number, draft.title || 'Chưa đặt tên')}</strong></summary>
       <div className="story-draft-content"><small>{draft.name} · {draft.text.length.toLocaleString('vi-VN')} ký tự</small>
         <div className="story-fields">
           <label>Tên chương<input disabled={busy} maxLength={120} value={draft.title} onChange={event => edit(index, { title: event.target.value })} /></label>

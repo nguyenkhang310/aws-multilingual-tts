@@ -71,22 +71,23 @@ export default function StoryTranslation({ chapter, targetLang, onApproved, onEd
   if (!chapter.contentRevision || chapter.sourceLang === targetLang) return null;
   const completed = (progress?.counts.DONE ?? 0) + (progress?.counts.EDITED ?? 0);
   return <section className="surface story-panel story-translation" aria-label="Dịch truyện">
-    <h2>Dịch sang {languageNames[targetLang] ?? targetLang}</h2>
+    <div className="story-translation-heading"><h2>Dịch sang {languageNames[targetLang] ?? targetLang}</h2>
+      <button className={plan ? 'secondary-button' : 'primary-button'} disabled={busy} onClick={() => void perform(async () => {
+        const created = await api.create(chapter, targetLang);
+        setIndex(0); setPlan(created); setProgress(await api.progress(chapter, created.planId));
+      })}>{plan ? 'Cập nhật kế hoạch dịch' : 'Lập kế hoạch dịch'}</button>
+    </div>
     {error && <p className="inline-error" role="alert">{error}</p>}
     {approved && <p>Đã duyệt bản dịch · {approved.textLength.toLocaleString('vi-VN')} ký tự. </p>}
-    <button className={plan ? 'secondary-button' : 'primary-button'} disabled={busy} onClick={() => void perform(async () => {
-      const created = await api.create(chapter, targetLang);
-      setIndex(0); setPlan(created); setProgress(await api.progress(chapter, created.planId));
-    })}>{plan ? 'Cập nhật kế hoạch dịch' : 'Lập kế hoạch dịch'}</button>
     {plan && progress && <>
-      <p>{completed}/{progress.total} phần đã dịch · {progress.totalChars.toLocaleString('vi-VN')} ký tự nguồn · {progress.status}</p>
+      <p>{completed}/{progress.total} phần đã dịch · {progress.totalChars.toLocaleString('vi-VN')} ký tự nguồn</p>
       <div className="story-actions">
-        {progress.status === 'DRAFT' && <button disabled={busy} onClick={() => void perform(async () =>
+        {progress.status === 'DRAFT' && <button className="primary-button" disabled={busy} onClick={() => void perform(async () =>
           setProgress(await api.action(chapter, plan.planId, 'start')))}>Bắt đầu dịch</button>}
         {progress.status === 'RUNNING' && <button disabled={busy} onClick={() => void perform(async () =>
           setProgress(await api.action(chapter, plan.planId, 'pause')))}>Tạm dừng</button>}
         {['PAUSED', 'BLOCKED_QUOTA', 'NEEDS_ATTENTION'].includes(progress.status) &&
-          <button disabled={busy} onClick={() => void perform(async () =>
+          <button className="primary-button" disabled={busy} onClick={() => void perform(async () =>
             setProgress(await api.action(chapter, plan.planId, 'resume')))}>Tiếp tục</button>}
         {completed === progress.total && <button className="primary-button" disabled={busy || (chunk !== null && edit !== (chunk.translatedText ?? ''))}
           onClick={() => void perform(async () => {
@@ -94,12 +95,17 @@ export default function StoryTranslation({ chapter, targetLang, onApproved, onEd
             setApproved(saved); onApproved(saved);
           })}>Duyệt bản dịch</button>}
       </div>
-      <div className="story-actions"><button disabled={busy || index === 0} onClick={() => setIndex(index - 1)}>Phần trước</button>
+      {completed === progress.total && chunk && edit !== (chunk.translatedText ?? '') &&
+        <small role="status">Hãy lưu phần chỉnh hiện tại trước khi duyệt bản dịch.</small>}
+      {plan.total > 1 && <div className="story-translation-pager">
+        <button className="secondary-button" disabled={busy || index === 0 || (chunk !== null && edit !== (chunk.translatedText ?? ''))}
+          onClick={() => setIndex(index - 1)}>Trước</button>
         <span>Phần {index + 1}/{plan.total}</span>
-        <button disabled={busy || index + 1 >= plan.total} onClick={() => setIndex(index + 1)}>Phần sau</button></div>
+        <button className="secondary-button" disabled={busy || index + 1 >= plan.total || (chunk !== null && edit !== (chunk.translatedText ?? ''))}
+          onClick={() => setIndex(index + 1)}>Sau</button></div>}
       {chunk && <div className="story-translation-grid">
-        <div><strong>Bản gốc</strong><p>{chunk.sourceText}</p></div>
-        <label><strong>Bản dịch</strong><textarea value={edit} maxLength={6000}
+        <div className="story-translation-source"><strong>Bản gốc</strong><p>{chunk.sourceText}</p></div>
+        <label className="story-translation-target"><strong>Bản dịch</strong><textarea value={edit} maxLength={6000}
           onChange={event => { const value = event.target.value; dirty.current = value !== (chunk.translatedText ?? ''); setEdit(value); onEditing?.(dirty.current); }} aria-label="Chỉnh bản dịch" /></label>
       </div>}
       {chunk && <div className="story-actions">

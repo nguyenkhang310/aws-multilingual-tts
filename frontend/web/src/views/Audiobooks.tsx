@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { StoryChapter, StoryProject } from '../../../shared/story';
-import { checkedBackup, checkedStoryCoverType } from '../../../shared/story';
+import { checkedBackup, checkedStoryCoverType, MAX_STORY_BACKUP_BYTES, serializeStoryBackup } from '../../../shared/story';
 import { storyApi } from '../lib/story-api';
 import StoryChapterEditor from './StoryChapterEditor';
 import StoryImport from './StoryImport';
@@ -30,6 +30,8 @@ export default function Audiobooks() {
   const [chapterDirty, setChapterDirty] = useState(false);
   const [chapter, setChapter] = useState<StoryChapter | null>(null);
   const [title, setTitle] = useState('');
+  const [renameTitle, setRenameTitle] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
   const [sourceLang, setSourceLang] = useState('vi-VN');
   const [targetLang, setTargetLang] = useState('vi-VN');
   const [chapterTitle, setChapterTitle] = useState('');
@@ -97,7 +99,9 @@ export default function Audiobooks() {
   function leaveProject() {
     activeProject.current = null; request.current++; setProject(null);
   }
-  const panelDirty = dialogDirty || (panel === 'new' && (!!title.trim() || !!createCover)) || (panel === 'chapter' && !!chapterTitle.trim());
+  const panelDirty = dialogDirty || (panel === 'new' && (!!title.trim() || !!createCover)) ||
+    (panel === 'chapter' && !!chapterTitle.trim()) ||
+    (panel === 'settings' && renameOpen && !!renameTitle.trim() && renameTitle.trim() !== project?.title);
   useEffect(() => {
     const leave = (event: Event) => {
       if (busy || dialogBusy) { event.preventDefault(); return; }
@@ -114,8 +118,8 @@ export default function Audiobooks() {
     });
   }
   function exported(backup: unknown, name: string) {
-    const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
-    if (blob.size > 20 * 1024 * 1024) throw new Error('Backup vượt 20 MB; cần chia dự án thành các dự án nhỏ trước khi xuất.');
+    const blob = new Blob([serializeStoryBackup(backup)], { type: 'application/json' });
+    if (blob.size > MAX_STORY_BACKUP_BYTES) throw new Error('Backup vượt giới hạn nên chưa được xuất.');
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a'); link.href = url; link.download = name; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -140,7 +144,7 @@ export default function Audiobooks() {
         <input aria-label="Tìm truyện" placeholder="Tìm truyện" value={query} onChange={event => setQuery(event.target.value)} /></label>
         <FilePickerButton label="Nhập bản sao lưu" accept=".json,application/json" disabled={busy} onFiles={files => {
           const file = files[0]; if (!file) return;
-          void run(async () => { if (file.size > 20 * 1024 * 1024) throw new Error('Bản sao lưu tối đa 20 MB.');
+          void run(async () => { if (file.size > MAX_STORY_BACKUP_BYTES) throw new Error('Bản sao lưu tối đa 20 MiB.');
             const backup = checkedBackup(JSON.parse(await file.text()));
             try { await open(await storyApi.importProject(backup)); } finally { await reloadProjects(); }
           });
@@ -181,7 +185,7 @@ export default function Audiobooks() {
     {panel && <Modal className="story-dialog" title={{ new: 'Thêm truyện', settings: 'Tùy chọn truyện', import: 'Nhập chương', chapter: 'Viết chương', glossary: 'Tên riêng và thuật ngữ', translate: 'Dịch nhiều chương' }[panel]}
       dismissible={!busy && !dialogBusy} onClose={() => {
         if (panelDirty && !window.confirm('Bỏ thay đổi chưa lưu?')) return;
-        setPanel(null);
+        setRenameOpen(false); setPanel(null);
       }}><div className="story-dialog-body">
       {error && <p role="alert" className="inline-error">{error}</p>}
       {panel === 'new' && <form className="story-form" onSubmit={event => { event.preventDefault(); if (!title.trim()) return;
@@ -215,11 +219,19 @@ export default function Audiobooks() {
       {project && panel === 'settings' && <div className="story-form">
         <div className="story-cover-detail">{cover(project)}<FilePickerButton label="Đổi ảnh bìa" accept="image/jpeg,image/png" disabled={busy} onFiles={files => { if (files[0]) uploadCover(project, files[0]); }} /></div>
         {project.cover && <button disabled={busy} onClick={() => void run(async () => { setProject(await storyApi.deleteCover(project)); await reloadProjects(); })}>Xóa ảnh bìa</button>}
-        <button disabled={busy} onClick={() => void run(async () => { const name = window.prompt('Tên truyện mới', project.title);
-          if (!name?.trim() || name === project.title) return; setProject(await storyApi.renameProject(project, name.trim())); await reloadProjects(); })}>Đổi tên truyện</button>
-        <button onClick={() => setPanel('translate')}>Dịch nhiều chương</button><button onClick={() => setPanel('glossary')}>Tên riêng và thuật ngữ</button>
+        {!renameOpen ? <button type="button" disabled={busy} onClick={() => { setRenameTitle(project.title); setRenameOpen(true); }}>Đổi tên truyện</button> :
+          <form className="story-form" aria-label="Đổi tên truyện" onSubmit={event => { event.preventDefault();
+            const name = renameTitle.trim(); if (!name || name === project.title) { setRenameOpen(false); return; }
+            void run(async () => { const updated = await storyApi.renameProject(project, name);
+              setProject(updated); setRenameOpen(false); await reloadProjects(); });
+          }}><label>Tên truyện<input autoFocus required maxLength={120} value={renameTitle}
+              onChange={event => setRenameTitle(event.target.value)} /></label>
+            <div className="story-actions"><button type="submit" className="primary-button" disabled={busy || !renameTitle.trim()}>Lưu tên</button>
+              <button type="button" className="secondary-button" disabled={busy} onClick={() => setRenameOpen(false)}>Hủy</button></div>
+          </form>}
+        <button onClick={() => { setRenameOpen(false); setPanel('translate'); }}>Dịch nhiều chương</button><button onClick={() => { setRenameOpen(false); setPanel('glossary'); }}>Tên riêng và thuật ngữ</button>
         <button disabled={busy} onClick={() => void run(async () => { exported(await storyApi.exportProject(project), `audiobook-${project.projectId}.json`); })}>Xuất bản sao lưu</button>
-        <small>Bản sao gồm nội dung và bản dịch; không gồm ảnh bìa hoặc MP3.</small>
+        <small>Bản sao gồm nội dung, glossary và draft dịch đã lưu; không gồm ảnh bìa hoặc MP3.</small>
         <button className="story-danger" disabled={busy} onClick={() => void run(async () => { if (!window.confirm(`Xóa truyện “${project.title}”?`)) return;
           await storyApi.deleteProject(project); leaveProject(); setPanel(null); selectChapter(null, true); await reloadProjects(); })}>Xóa truyện</button>
       </div>}

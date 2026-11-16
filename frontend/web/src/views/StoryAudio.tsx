@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, DEMO } from '../lib/api';
 import type { Language } from '../lib/types';
-import type { StoryChapter, StoryPlan, StoryProgress } from '../../../shared/story';
+import type { StoryChapter, StoryChapterAudio, StoryPlan, StoryProgress } from '../../../shared/story';
 import { storyBatchApi, type PlanInput } from '../lib/story-batch-api';
 import { languageNames } from '../../../shared/languages';
 import StoryRunProgress from '../components/StoryRunProgress';
@@ -9,7 +9,6 @@ import StoryAudioSettings, { voiceName } from '../components/StoryAudioSettings'
 import { storyListeningQueue, storyQueuePages } from '../../../shared/story-playback';
 import { useStoryPlayback } from '../hooks/StoryPlayback';
 import { Icon } from '../components/ui';
-import { mergeStoryMp3 } from '../lib/story-merge';
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'Chưa hoàn tất thao tác.';
 
@@ -23,6 +22,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
   const [plans, setPlans] = useState<StoryPlan[]>([]);
   const [plan, setPlan] = useState<StoryPlan | null>(null);
   const [progress, setProgress] = useState<StoryProgress | null>(null);
+  const [chapterAudio, setChapterAudio] = useState<StoryChapterAudio | null>(null);
   const [quota, setQuota] = useState<number | null>(null);
   const [provider, setProvider] = useState<'azure' | 'gemini'>('azure');
   const [voice, setVoice] = useState('');
@@ -36,7 +36,6 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
   const [error, setError] = useState('');
-  const [mergeProgress, setMergeProgress] = useState(0);
 
   useEffect(() => {
     if (DEMO) return;
@@ -50,7 +49,8 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
       setPlan(latest);
       if (latest) {
         const saved = await storyBatchApi.progress(chapter, latest.planId);
-        if (live) setProgress(saved);
+        const audio = await storyBatchApi.chapterAudio(chapter, latest.planId);
+        if (live) { setProgress(saved); setChapterAudio(audio); }
       }
       if (live) setReady(true);
     }).catch(err => { if (live) setError(message(err)); });
@@ -116,6 +116,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
     const chosen = plans.find(item => item.planId === id) ?? null;
     setPlan(chosen); setCursor(undefined);
     setProgress(chosen ? await storyBatchApi.progress(chapter, id) : null);
+    setChapterAudio(chosen ? await storyBatchApi.chapterAudio(chapter, id) : null);
   }
 
   async function control(action: 'pause' | 'resume', segmentId?: string) {
@@ -132,7 +133,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
     const input: PlanInput = { provider, voice, speed, style, styleIntensity: intensity, translateTo,
       textSource: translated ? 'approved_translation' : 'original' };
     const created = await storyBatchApi.create(chapter, input);
-    setPlan(created); setCursor(undefined);
+    setPlan(created); setChapterAudio(null); setCursor(undefined);
     const draft = await storyBatchApi.progress(chapter, created.planId);
     setProgress(draft); setQuota(draft.quotaRemainingEstimate);
     const estimate = created.provider === 'gemini'
@@ -146,21 +147,13 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
     const list = await storyBatchApi.plans(chapter); setPlans(list.items);
   }
 
-  async function mergeAudio() {
-    if (!plan || !progress || progress.done !== progress.total || progress.total < 2) return;
-    setMergeProgress(0);
-    const urls: string[] = [];
-    let nextCursor: string | null = null;
-    do {
-      const page = await storyBatchApi.progress(chapter, plan.planId, nextCursor || undefined);
-      if (page.done !== page.total || page.items.some(item => item.status !== 'DONE' || !item.audioUrl))
-        throw new Error('Chưa đủ MP3 để gộp. Hãy tải lại tiến độ.');
-      urls.push(...page.items.map(item => item.audioUrl!));
-      nextCursor = page.nextCursor;
-    } while (nextCursor && urls.length < progress.total);
-    if (urls.length !== progress.total) throw new Error('Danh sách MP3 chưa đầy đủ.');
-    await mergeStoryMp3(urls, `chuong ${String(chapter.chapterNumber).padStart(2, '0')} - tron bo.mp3`, setMergeProgress);
-    setMergeProgress(0);
+  async function buildChapterAudio() {
+    if (!plan || !progress || progress.done !== progress.total) return;
+    for (let step = 0; step < 40; step++) {
+      const next = await storyBatchApi.advanceChapterAudio(chapter, plan.planId);
+      setChapterAudio(next);
+      if (next.status === 'DONE' || next.status === 'MISSING') return;
+    }
   }
 
   const language = catalog.find(item => item.provider === provider && item.lang === outputLang);
@@ -226,10 +219,16 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
         })}
         onTop={() => void run(async () => { setProgress(await storyBatchApi.progress(chapter, plan.planId)); setCursor(undefined); })} />}
       {!!progress?.done && <details className="story-create-options"><summary>Giọng kể & tạo mới</summary>{setup}</details>}
-      {plan && progress && progress.total > 1 && progress.done === progress.total && <div className="story-merge">
-        <button className="secondary-button" disabled={busy} onClick={() => void run(mergeAudio)}>
-          {busy ? `Đang gộp ${mergeProgress}/${progress.total} đoạn…` : 'Gộp và tải MP3 cả chương'}
-        </button><small>Gộp trên thiết bị; bản thu từng đoạn vẫn dùng được.</small>
+      {plan && progress && progress.total > 0 && progress.done === progress.total && <div className="story-merge">
+        {chapterAudio?.status !== 'DONE' && <button className="secondary-button" disabled={busy} onClick={() => void run(buildChapterAudio)}>
+          {busy ? `Đang ghép ${chapterAudio?.processed ?? 0}/${progress.total} đoạn…` : 'Tạo MP3 chương'}
+        </button>}
+        {chapterAudio?.status === 'DONE' && chapterAudio.downloadUrl && <button className="secondary-button" disabled={busy} onClick={() => void run(async () => {
+          const fresh = await storyBatchApi.chapterAudio(chapter, plan.planId); setChapterAudio(fresh);
+          if (!fresh.downloadUrl) throw new Error('MP3 chương chưa sẵn sàng để tải.');
+          window.location.assign(fresh.downloadUrl);
+        })}>Tải MP3 chương</button>}
+        {chapterAudio?.status === 'MISSING' && <small>{chapterAudio.error}</small>}
       </div>}
     </>}
   </section>;

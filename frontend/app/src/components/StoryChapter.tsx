@@ -147,7 +147,7 @@ export default function StoryChapter({ project, chapter, close, onSaved, onProje
         <Action onPress={() => { setPdf(null); setPendingScan(null); setStage(''); }}>Hủy nhập</Action></>}
     </>}
     {tab === 'translation' && <StoryTranslation key={`${current.chapterId}/${current.revision}`} chapter={current} targetLang={project.targetLang} onEditing={setTranslationDirty} />}
-    {tab === 'audio' && <StoryAudio key={`${current.chapterId}/${current.revision}`} chapter={current} targetLang={project.targetLang} />}
+    {tab === 'audio' && <StoryAudio key={`${current.chapterId}/${current.revision}`} chapter={current} storyTitle={project.title} targetLang={project.targetLang} />}
     </Animated.View>
     <Sheet title={({ metadata: 'Thông tin chương', language: 'Ngôn ngữ chương', delete: 'Xóa chương', discard: 'Chưa lưu thay đổi', scan: 'Đọc tài liệu' } as const)[options ?? 'metadata']} visible={!!options} close={closeOptions}>
       {options === 'metadata' && <>

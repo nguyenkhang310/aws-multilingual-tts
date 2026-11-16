@@ -17,6 +17,15 @@ class StoryError(Exception):
         self.status, self.code = status, code
 
 
+def _storage_error(error):
+    code = error.response.get("Error", {}).get("Code", "")
+    if code == "AccessDenied":
+        return StoryError(503, "STORAGE_ACCESS_DENIED", "S3 từ chối quyền truy cập dữ liệu truyện.")
+    if code == "NoSuchBucket":
+        return StoryError(503, "STORAGE_NOT_CONFIGURED", "Không tìm thấy kho dữ liệu truyện.")
+    return StoryError(503, "STORAGE_UNAVAILABLE", "Chưa đọc hoặc ghi được dữ liệu truyện trong S3.")
+
+
 def require_id(value):
     if not isinstance(value, str) or not ID.fullmatch(value):
         raise StoryError(400, "INVALID_ID", "Mã dự án hoặc chương không hợp lệ.")
@@ -43,6 +52,8 @@ def read(key):
         response = client.get_object(Bucket=config.JOBS_BUCKET, Key=key)
     except client.exceptions.NoSuchKey:
         return None
+    except client.exceptions.ClientError as error:
+        raise _storage_error(error) from None
     try:
         return json.loads(response["Body"].read()), response["ETag"]
     finally:
@@ -59,7 +70,7 @@ def write(key, value, etag=None, create=False):
     except client.exceptions.ClientError as error:
         if error.response.get("Error", {}).get("Code") in {"PreconditionFailed", "ConditionalRequestConflict"}:
             raise StoryError(409, "REVISION_CONFLICT", "Dữ liệu đã đổi. Tải lại trước khi lưu.") from None
-        raise
+        raise _storage_error(error) from None
 
 
 def children(prefix):
@@ -69,7 +80,10 @@ def children(prefix):
         options = {"Bucket": config.JOBS_BUCKET, "Prefix": prefix, "Delimiter": "/", "MaxKeys": 1000}
         if token:
             options["ContinuationToken"] = token
-        response = client.list_objects_v2(**options)
+        try:
+            response = client.list_objects_v2(**options)
+        except client.exceptions.ClientError as error:
+            raise _storage_error(error) from None
         result.extend(item["Prefix"] for item in response.get("CommonPrefixes", []))
         if len(result) > MAX_SCAN:
             raise StoryError(503, "SCAN_LIMIT", "Danh sách quá lớn; cần lưu trữ lại dữ liệu cũ.")

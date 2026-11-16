@@ -1,5 +1,14 @@
 # CHANGELOG — M1
 
+## 2026-11-16 — STORY-05 route MP3 chương (local)
+
+- Thêm GET/POST `.../audio-plans/{planId}/chapter-audio` vào allowlist router hiện có, tiếp tục dùng demo token/scope và Lambda M5. M1 suite: 40 chạy, 14 skipped, không lỗi. Cần M1 review route trước deploy; chưa kiểm CloudFront/AWS.
+
+## 2026-11-16 — Route khôi phục draft STORY-02
+
+- Cho phép `PUT/POST /audiobooks/{id}/chapters/{id}/translation-drafts/import/{uploadId}/{index|commit}` qua cùng behavior `/audiobooks*`, giữ xác thực và scope. Cho phép `POST /audiobooks/{id}/glossary` để M5 khôi phục revision vào dự án mới.
+- M1 suite: 39/39 PASS, gồm body cap riêng cho project backup, auth/routing và compatibility audiobook paths. Không deploy.
+
 ## 2026-11-15 — Bỏ API nhân vật Audio Truyện
 
 - Gỡ hai route API nhân vật/Gemini khỏi router M1. Behavior `/audiobooks*` và các route dự án/chương/audio khác giữ nguyên.

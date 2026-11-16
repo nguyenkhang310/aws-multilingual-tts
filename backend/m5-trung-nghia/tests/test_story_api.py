@@ -68,12 +68,44 @@ class StoryApiTest(unittest.TestCase):
         self.assertEqual(self.call('GET', translation_path, token=False)[0], 401)
         self.assertEqual(self.call('GET', translation_path)[1]['items'], [])
 
+    def test_m1_routes_chunked_draft_restore_and_glossary_revision(self):
+        _, project = self.call('POST', '/audiobooks', {'title': 'Backup', 'sourceLang': 'vi-VN',
+            'targetLang': 'en-US'})
+        pid = project['projectId']
+        _, chapter = self.call('POST', f'/audiobooks/{pid}/chapters', {'title': 'Mở đầu', 'chapterNumber': 1})
+        base = f"/audiobooks/{pid}/chapters/{chapter['chapterId']}"
+        self.call('PUT', base + '/uploads', {'uploadId': 'c' * 32, 'index': 0, 'text': 'Xin chào.'})
+        self.call('POST', base + '/commit', {'uploadId': 'c' * 32, 'count': 1, 'revision': 1})
+        self.assertEqual(self.call('POST', f'/audiobooks/{pid}/glossary', {'revision': 3,
+            'entries': [{'source': 'Xin', 'target': 'Hello'}]})[0], 201)
+        draft_id = 'd' * 32
+        path = base + f'/translation-drafts/import/{draft_id}'
+        chunk = {'sourceText': 'Xin chào.', 'translated': True, 'translatedText': 'Hello.', 'reviewState': 'DONE'}
+        self.assertEqual(self.call('PUT', path + '/0', chunk, token=False)[0], 401)
+        self.assertEqual(self.call('PUT', path + '/0', chunk)[0], 200)
+        status, restored = self.call('POST', path + '/commit', {'count': 1, 'targetLang': 'en-US',
+            'sourceReference': {'sourceRevision': 5, 'contentRevision': 'e' * 32, 'glossaryRevision': 3}})
+        self.assertEqual(status, 201, restored)
+        self.assertEqual(restored['restoredFrom']['sourceRevision'], 5)
+        self.assertEqual(self.call('POST', path + '/commit', {'count': 1, 'targetLang': 'en-US',
+            'sourceReference': {'sourceRevision': 5, 'contentRevision': 'e' * 32, 'glossaryRevision': 3}})[0], 201)
+
     def test_character_routes_are_removed(self):
         project_id = 'a' * 32
         chapter_id = 'b' * 32
         self.assertEqual(self.call('GET', f'/audiobooks/{project_id}/characters')[0], 404)
         self.assertEqual(self.call('POST',
             f'/audiobooks/{project_id}/chapters/{chapter_id}/character-suggestions')[0], 404)
+
+    def test_hidden_legacy_cast_round_trips_in_project_backup_data(self):
+        cast = {'schemaVersion': 1, 'version': 5, 'characters': [{'name': 'Nhân vật cũ'}], 'relations': []}
+        status, project = self.call('POST', '/audiobooks', {'title': 'Truyện cũ', 'sourceLang': 'vi-VN',
+            'targetLang': 'en-US', 'cast': cast})
+        self.assertEqual(status, 201)
+        self.assertEqual(self.call('GET', f"/audiobooks/{project['projectId']}")[1]['cast'], cast)
+        with mock.patch.object(router, 'MAX_BODY_BYTES', 2 * 1024 * 1024):
+            self.assertEqual(self.call('POST', '/audiobooks', {'title': 'Quá lớn', 'sourceLang': 'vi-VN',
+                'targetLang': 'en-US', 'cast': {'data': 'x' * (1024 * 1024 + 1)}})[0], 400)
 
     def test_create_upload_reload_conflict_and_delete(self):
         self.assertEqual(self.call('GET', '/audiobooks', token=False)[0], 401)

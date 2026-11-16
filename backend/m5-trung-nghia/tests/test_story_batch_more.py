@@ -9,9 +9,16 @@ from tts_common import config, db, story_chapters, story_content, story_batch_st
 import story_runner
 import story_run_recovery as recovery
 import story_dispatch
+import story_progress
 
 
 class StoryBatchMoreTest(StoryBatchCase):
+    def test_one_queue_segment_exposes_worker_chunk_progress(self):
+        item = {'status': 'PROCESSING', 'jobId': 'job-progress'}
+        job = {'status': 'PROCESSING', 'chunkCount': 5, 'chunksDone': 2}
+        with mock.patch.object(story_progress.db, 'get_job', return_value=job):
+            self.assertEqual(story_progress._audio_fraction('demo', item), 0.4)
+
     def test_auto_style_is_one_style_per_segment(self):
         body = {'chapterRevision': self.chapter['revision'], 'provider': 'azure',
                 'voice': 'voice-fixture', 'speed': 0.9, 'style': 'auto', 'styleIntensity': 1}

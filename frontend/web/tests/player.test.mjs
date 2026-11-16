@@ -3,6 +3,16 @@ import test from "node:test";
 import React, { act, useState } from "react";
 import { environment, recording, settle } from "./environment.mjs";
 
+test("tên tải đoạn Audio Truyện mô tả đoạn, không dùng mã job", async () => {
+  const env = await environment();
+  try {
+    const { audioFilename } = await env.load("components/AudioPlayer.tsx");
+    assert.equal(audioFilename({ jobId: "job-id", storyChapterId: "chapter-id", title: "Mở đầu · Đoạn 2" }),
+      "Mở đầu · Đoạn 2.mp3");
+    assert.equal(audioFilename({ jobId: "job-id" }), "ban-thu-job-id.mp3");
+  } finally { await env.close(); }
+});
+
 test("Trình phát: phát từ danh sách, đổi bài và âm lượng", async (suite) => {
   const env = await environment();
   const { default: Player } = await env.load("components/AudioPlayer.tsx");

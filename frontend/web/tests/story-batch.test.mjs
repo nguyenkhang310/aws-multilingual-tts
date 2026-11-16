@@ -3,6 +3,18 @@ import test from 'node:test';
 import React, { act } from 'react';
 import { environment, settle } from './environment.mjs';
 
+test('Tiến độ tăng bằng ước tính khi provider đang xử lý và kết thúc đúng 100%', async () => {
+  const env = await environment();
+  try {
+    const { estimatedProgress } = await env.load('components/StoryRunProgress.tsx');
+    assert.ok(estimatedProgress(0, true, 1000) > 17 && estimatedProgress(0, true, 1000) < 18);
+    assert.ok(estimatedProgress(0, true, 5000) > 60);
+    assert.ok(estimatedProgress(40, true, 30000) > 40 && estimatedProgress(40, true, 30000) < 100);
+    assert.equal(estimatedProgress(40, false, 30000), 40);
+    assert.equal(estimatedProgress(100, true, 30000), 100);
+  } finally { await env.close(); }
+});
+
 test('Audio Truyện duyệt kế hoạch, start một lần và mở lại tiến độ từ backend', async () => {
   const env = await environment();
   const { api } = await env.load('lib/api.ts');
@@ -29,6 +41,7 @@ test('Audio Truyện duyệt kế hoạch, start một lần và mở lại ti�
     { id: 'HoaiMy', name: 'Hoài My', styles: ['cheerful'], styleIntensityRange: [0.1, 2] }] }];
   storyBatchApi.plans = async () => ({ items: created ? [latestPlan] : [], nextCursor: null,
     quotaRemainingEstimate: 30000 });
+  storyBatchApi.chapterAudio = async () => ({ status: 'NOT_STARTED' });
   storyBatchApi.create = async (_chapter, input) => {
     assert.equal(input.voice, 'HoaiMy');
     assert.equal(input.style, 'cheerful');
@@ -68,7 +81,7 @@ test('Audio Truyện duyệt kế hoạch, start một lần và mở lại ti�
   } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
 });
 
-test('Audio Truyện khôi phục trạng thái quota, lỗi và chưa rõ sau reload', async () => {
+test('Audio Truyện báo rõ quota Gemini, cho thử lại chủ động và giữ lỗi khác sau reload', async () => {
   const env = await environment();
   const { api } = await env.load('lib/api.ts');
   const { storyBatchApi } = await env.load('lib/story-batch-api.ts');
@@ -84,15 +97,20 @@ test('Audio Truyện khôi phục trạng thái quota, lỗi và chưa rõ sau r
     voice: 'HoaiMy', speed: 0.9, style: 'neutral', styleIntensity: 1, createdAt: '2026-11-14' };
   api.voices = async () => [{ provider: 'azure', lang: 'vi-VN', voices: [{ id: 'HoaiMy' }] }];
   storyBatchApi.plans = async () => ({ items: [plan], quotaRemainingEstimate: 0 });
+  storyBatchApi.chapterAudio = async () => ({ status: 'NOT_STARTED' });
   storyBatchApi.progress = async () => ({ planId: plan.planId, status: 'BLOCKED_QUOTA', total: 4,
     totalChars: 4000, quotaRemainingEstimate: 0, done: 1, processing: 0, queued: 0,
-    failed: 1, blockedQuota: 1, uncertain: 1, items: [], nextCursor: null });
+    failed: 1, blockedQuota: 1, uncertain: 1, items: [
+      { segmentId: 'd'.repeat(32), index: 0, status: 'FAILED', errorCode: 'GEMINI_TTS_QUOTA', retryable: true },
+    ], nextCursor: null });
   try {
     await act(async () => { env.root.render(React.createElement(StoryAudio,
       { chapter, targetLang: 'vi-VN', dirty: false })); await settle(); });
     assert.match(env.mount.textContent, /1Giới hạn/);
     assert.match(env.mount.textContent, /1Lỗi/);
     assert.match(env.mount.textContent, /1Chưa rõ/);
+    assert.match(env.mount.textContent, /Gemini đang giới hạn lượt hoặc hết quota/);
+    assert.match(env.mount.textContent, /Thử lại đoạn này/);
     assert.equal([...env.mount.querySelectorAll('button')].find(item => item.textContent === 'Tạo giọng kể').disabled, true);
   } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
 });
@@ -119,6 +137,7 @@ test('Audio Truyện gửi Pause, Resume và Retry từng đoạn tới backend'
   const calls = [];
   api.voices = async () => [{ provider: 'azure', lang: 'vi-VN', voices: [{ id: 'HoaiMy' }] }];
   storyBatchApi.plans = async () => ({ items: [plan], quotaRemainingEstimate: 1000 });
+  storyBatchApi.chapterAudio = async () => ({ status: 'NOT_STARTED' });
   storyBatchApi.progress = async () => current;
   storyBatchApi.pause = async () => { calls.push('pause'); current = makeProgress('PAUSED', { desiredState: 'PAUSED', queued: 1 }); return current; };
   storyBatchApi.resume = async () => {

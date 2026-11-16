@@ -54,6 +54,19 @@ Parameters:
   GeminiModel:
     Type: String
     Default: ''
+  VoiceCloneEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  VoiceCloneModelPrefix:
+    Type: String
+    Default: voice-clone/vieneu-3.8.4
+    AllowedPattern: '[A-Za-z0-9/_-]+'
+  VoiceCloneMemoryMb:
+    Type: Number
+    Default: 3072
+    MinValue: 2048
+    MaxValue: 10240
   TranslatorApiParameterName:
     Type: String
     Default: ''
@@ -93,6 +106,9 @@ Parameters:
     MaxValue: 21600
     Description: Drops stale events before they spend credit
 
+Conditions:
+  VoiceCloneRequested: !Equals [!Ref VoiceCloneEnabled, 'true']
+
 Resources:
   SynthesizeFunction:
     Type: AWS::Serverless::Function
@@ -101,11 +117,15 @@ Resources:
       CodeUri: ../synthesize
       Handler: app.handler
       Runtime: python3.12
+      Architectures: [x86_64]
       Role: !Ref LabRoleArn
-      Timeout: !Ref WorkerTimeoutSeconds
-      MemorySize: !Ref WorkerMemoryMb
+      Timeout: !If [VoiceCloneRequested, 900, !Ref WorkerTimeoutSeconds]
+      MemorySize: !If [VoiceCloneRequested, !Ref VoiceCloneMemoryMb, !Ref WorkerMemoryMb]
+      EphemeralStorage:
+        Size: !If [VoiceCloneRequested, 2048, 512]
       Layers:
         - !Ref CommonLayerArn
+        - !If [VoiceCloneRequested, !Ref VoiceCloneLayer, !Ref AWS::NoValue]
       Environment:
         Variables:
           JOBS_BUCKET: !Ref JobsBucket
@@ -125,6 +145,9 @@ Resources:
           GEMINI_MODEL: !Ref GeminiModel
           EMOTION_DAILY_CALL_LIMIT: 100
           GEMINI_TTS_DAILY_CALL_LIMIT: !Ref GeminiTtsDailyCallLimit
+          VOICE_CLONE_ENABLED: !Ref VoiceCloneEnabled
+          VOICE_CLONE_MODEL_BUCKET: !Ref JobsBucket
+          VOICE_CLONE_MODEL_PREFIX: !Ref VoiceCloneModelPrefix
 
   # EventInvokeConfig duy nhất của worker; không tạo cái thứ hai cho cùng function.
   SynthesizeEventInvokeConfig:
@@ -154,6 +177,8 @@ Resources:
         - !Ref CommonLayerArn
       Environment:
         Variables:
+          JOBS_BUCKET: !Ref JobsBucket
+          JOBS_PREFIX: !Ref JobsPrefix
           MAX_CHARS: !Ref MaxChars
           TRANSLATOR_API_PARAMETER_NAME: !Ref TranslatorApiParameterName
           TTS_PROVIDER: !Ref TtsProvider
@@ -163,6 +188,15 @@ Resources:
           GEMINI_EMOTION_ENABLED: !Ref GeminiEmotionEnabled
           GEMINI_API_PARAMETER_NAME: !Ref GeminiApiParameterName
           GEMINI_MODEL: !Ref GeminiModel
+          VOICE_CLONE_ENABLED: !Ref VoiceCloneEnabled
+
+  VoiceCloneLayer:
+    Type: AWS::Serverless::LayerVersion
+    Condition: VoiceCloneRequested
+    Properties:
+      LayerName: !Sub "tts-vieneu-${Env}"
+      ContentUri: ../voice_clone_layer
+      CompatibleRuntimes: [python3.12]
 
 Outputs:
   SynthesizeFunctionName:

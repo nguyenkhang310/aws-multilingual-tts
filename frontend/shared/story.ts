@@ -1,20 +1,47 @@
 export const MAX_STORY_CHARS = 1_000_000;
 export const STORY_CHUNK_CHARS = 30_000;
+export const MAX_STORY_BACKUP_BYTES = 20 * 1024 * 1024;
 export type StoryPage<T> = { items: T[]; nextCursor: string | null };
 export type StoryCover = { url: string; expiresAt: string; contentType: 'image/jpeg' | 'image/png';
   sizeBytes: number; width: number; height: number; updatedAt: string };
 export type StoryProject = { schemaVersion: 1; projectId: string; title: string; description: string;
   sourceLang: string; targetLang: string; chapterCount: number; version: number; updatedAt: string; status: string;
-  cover?: StoryCover | null };
+  cover?: StoryCover | null; cast?: unknown };
 export type StoryChapter = { schemaVersion: 1; chapterId: string; projectId: string; chapterNumber: number;
   title: string; order: number; sourceLang: string; textLength: number; segmentCount: number;
   status: string; revision: number; contentRevision: string | null; updatedAt: string };
+
+/** Bỏ tiền tố chương trùng số đang hiển thị; giữ nguyên các tên khác. */
+export function chapterDisplayTitle(number: number, title: string): string {
+  let clean = title.trim();
+  for (let count = 0; count < 2; count++) {
+    const match = /^(?:chương|chuong|chapter)\s*(\d{1,5})(?=$|[\s.:_–—-])[\s.:_–—-]*/iu.exec(clean);
+    if (!match || Number(match[1]) !== number) break;
+    clean = clean.slice(match[0].length).trim();
+  }
+  return clean;
+}
+
+export function chapterNumberFromFilename(name: string, fallback: number): number {
+  const marked = /(?:^|[\s._-])(?:chương|chuong|chapter)\s*[-_. ]*(\d{1,5})(?=$|[\s._–—-])/iu.exec(name);
+  const leading = /^\s*(\d{1,5})(?=$|[\s._–—-])/u.exec(name);
+  return Number(marked?.[1] ?? leading?.[1] ?? fallback);
+}
+
+export function chapterLabel(number: number, title: string): string {
+  const name = chapterDisplayTitle(number, title);
+  return `Chương ${String(number).padStart(2, '0')}${name ? ` · ${name}` : ''}`;
+}
 export type StorySegment = { segmentId: string; chapterId: string; order: number; sourceText: string;
   textLength: number; revision: number; status: string; jobId: string | null; audioKey: string | null };
 export type StoryBackup = { format: 'voxa-story-v1'; project: Omit<StoryProject, 'cover'>;
   glossary?: { revision: number; entries: { source: string; target: string }[] };
+  cast?: unknown;
   chapters: { metadata: StoryChapter; sourceText: string; segments: StorySegment[];
-    approvedTranslation?: { targetLang: string; segments: string[] } }[] };
+    approvedTranslation?: { targetLang: string; segments: string[] };
+    translationDrafts?: { targetLang: string; sourceRevision: number; contentRevision: string;
+      glossaryRevision: number; chunks: { sourceText: string; translatedText: string | null;
+        translated: boolean; reviewState: string }[] }[] }[] };
 export const MAX_STORY_COVER_BYTES = 5 * 1024 * 1024;
 export function checkedStoryCoverType(type: string | null | undefined, size: number): 'image/jpeg' | 'image/png' {
   if (!Number.isInteger(size) || size < 1 || size > MAX_STORY_COVER_BYTES)
@@ -49,6 +76,8 @@ export type StoryProgress = { planId: string; status: string; desiredState?: 'RU
   queued: number; claimed: number; submitted: number;
   processing: number; done: number; failed: number; blockedQuota: number; uncertain: number;
   maxAttempts?: number; percentComplete: number; items: StoryQueueItem[]; nextCursor: string | null };
+export type StoryChapterAudio = { planId: string; status: 'NOT_STARTED' | 'STAGING' | 'ASSEMBLING' | 'DONE' | 'MISSING';
+  total?: number; processed?: number; audioUrl?: string; downloadUrl?: string; error?: string };
 export function storyChunks(text: string): string[] {
   if (!text.trim() || text.length > MAX_STORY_CHARS || text.includes('\0'))
     throw new Error('Chương cần có chữ và tối đa 1.000.000 ký tự.');
@@ -60,6 +89,22 @@ export function storyChunks(text: string): string[] {
     start = end;
   }
   return parts;
+}
+
+export function serializeStoryBackup(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  if (new TextEncoder().encode(serialized).byteLength > MAX_STORY_BACKUP_BYTES)
+    throw new Error('Backup vượt 20 MiB nên chưa được xuất. Hãy chia dự án thành các phần nhỏ hơn.');
+  return serialized;
+}
+
+export function safeStoryCast(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(safeStoryCast);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) =>
+    !/(api.?key|secret|credential|authorization|claim.?token|lease|dispatch|presigned.?url)/i.test(key))
+    .map(([key, item]) => [key, typeof item === 'string' && /^https?:\/\//i.test(item) ? undefined : safeStoryCast(item)])
+    .filter(([, item]) => item !== undefined));
 }
 
 export function checkedBackup(value: unknown): StoryBackup {
@@ -78,6 +123,18 @@ export function checkedBackup(value: unknown): StoryBackup {
         translation.segments.some(text => typeof text !== 'string' || !text.trim() || text.length > 10000) ||
         translation.segments.reduce((count, text) => count + text.length, 0) > MAX_STORY_CHARS))
       throw new Error('Bản dịch trong backup không hợp lệ.');
+    for (const draft of chapter.translationDrafts ?? [])
+      if (!/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$/.test(draft.targetLang) ||
+          !Number.isInteger(draft.sourceRevision) || typeof draft.contentRevision !== 'string' ||
+          !Number.isInteger(draft.glossaryRevision) || !Array.isArray(draft.chunks) ||
+          !draft.chunks.length || draft.chunks.length > 2000 ||
+          draft.chunks.some(chunk => typeof chunk.sourceText !== 'string' || !chunk.sourceText ||
+            typeof chunk.translated !== 'boolean' ||
+            !['DONE', 'EDITED', 'QUEUED', 'RUNNING', 'FAILED', 'UNCERTAIN', 'BLOCKED_QUOTA'].includes(chunk.reviewState) ||
+            (chunk.translated && (typeof chunk.translatedText !== 'string' || !chunk.translatedText.trim())) ||
+            (!chunk.translated && chunk.translatedText !== null)) ||
+          draft.chunks.reduce((sum, chunk) => sum + (chunk.translatedText?.length ?? 0), 0) > MAX_STORY_CHARS)
+        throw new Error('Bản nháp dịch trong backup không hợp lệ.');
     if (chapter.metadata?.schemaVersion !== 1 || typeof chapter.metadata.title !== 'string' ||
         !chapter.metadata.title.trim() || chapter.metadata.title.length > 120 ||
         !Number.isInteger(chapter.metadata.chapterNumber) || chapter.metadata.chapterNumber < 1 ||

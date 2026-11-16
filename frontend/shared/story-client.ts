@@ -1,4 +1,4 @@
-import { checkedBackup, storyChunks, type StoryBackup, type StoryChapter, type StoryPage, type StoryProject, type StorySegment, type StoryPlan, type StoryProgress } from './story';
+import { checkedBackup, safeStoryCast, storyChunks, type StoryBackup, type StoryChapter, type StoryChapterAudio, type StoryPage, type StoryProject, type StorySegment, type StoryPlan, type StoryProgress } from './story';
 import type { ApprovedTranslation, StoryGlossary, TranslationChunk, TranslationPlan, TranslationProgress } from './story-translation';
 export type StoryRequest = <T>(path: string, options?: { method?: string; body?: string; headers?: Record<string, string>; signal?: AbortSignal }) => Promise<T>;
 export type PlanInput = { provider: 'azure' | 'gemini'; voice: string; speed: number;
@@ -17,7 +17,10 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
     glossary: (projectId: string) => request<StoryGlossary>(`/audiobooks/${projectId}/glossary`),
     saveGlossary: (projectId: string, data: StoryGlossary) => request<StoryGlossary>(
       `/audiobooks/${projectId}/glossary`, { method: 'PUT', body: JSON.stringify(data) }),
-    plans: (chapter: StoryChapter) => request<StoryPage<TranslationPlan>>(`${translationRoot(chapter)}/translation-plans?limit=50`),
+    restoreGlossary: (projectId: string, data: StoryGlossary) => request<StoryGlossary>(
+      `/audiobooks/${projectId}/glossary`, { method: 'POST', body: json(data) }),
+    plans: (chapter: StoryChapter, cursor?: string) => request<StoryPage<TranslationPlan>>(
+      `${translationRoot(chapter)}/translation-plans?limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`),
     create: (chapter: StoryChapter, targetLang: string) => request<TranslationPlan>(
       `${translationRoot(chapter)}/translation-plans`, { method: 'POST',
         body: JSON.stringify({ chapterRevision: chapter.revision, targetLang }) }),
@@ -29,6 +32,17 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
     edit: (chapter: StoryChapter, planId: string, index: number, translatedText: string, version: number) =>
       request<TranslationChunk>(`${plan(chapter, planId)}/chunks/${index}`, { method: 'PUT',
         body: JSON.stringify({ translatedText, version }) }),
+    restoreDraft: async (chapter: StoryChapter, draft: { targetLang: string; sourceRevision: number;
+      contentRevision: string; glossaryRevision: number;
+      chunks: { sourceText: string; translatedText: string | null; translated: boolean; reviewState: string }[] }) => {
+      const uploadId = id();
+      const base = `${translationRoot(chapter)}/translation-drafts/import/${uploadId}`;
+      for (const [index, chunk] of draft.chunks.entries())
+        await request(`${base}/${index}`, { method: 'PUT', body: json(chunk) });
+      return request(`${base}/commit`, { method: 'POST', body: json({ count: draft.chunks.length,
+        targetLang: draft.targetLang, sourceReference: { sourceRevision: draft.sourceRevision,
+          contentRevision: draft.contentRevision, glossaryRevision: draft.glossaryRevision } }) });
+    },
     retry: (chapter: StoryChapter, planId: string, index: number) =>
       request<TranslationProgress>(`${plan(chapter, planId)}/chunks/${index}/retry`, { method: 'POST', body: '{}' }),
     approved: (chapter: StoryChapter) => request<ApprovedTranslation>(`${translationRoot(chapter)}/approved-translation`),
@@ -64,6 +78,9 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
       `${planPath(chapter, planId)}/segments/${segmentId}/retry`, { method: 'POST', body: '{}' }),
     progress: (chapter: StoryChapter, planId: string, cursor?: string, signal?: AbortSignal) => request<StoryProgress>(
       `${path(chapter)}/audio-progress?planId=${planId}&limit=25${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal }),
+    chapterAudio: (chapter: StoryChapter, planId: string) => request<StoryChapterAudio>(`${planPath(chapter, planId)}/chapter-audio`),
+    advanceChapterAudio: (chapter: StoryChapter, planId: string) => request<StoryChapterAudio>(
+      `${planPath(chapter, planId)}/chapter-audio`, { method: 'POST', body: '{}' }),
   };
   async function all<T>(path: string): Promise<T[]> {
     const items: T[] = [];
@@ -81,8 +98,8 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
   const storyApi = {
     projects: () => all<StoryProject>(root),
     project: (projectId: string) => request<StoryProject>(`${root}/${projectId}`),
-    createProject: (title: string, sourceLang: string, targetLang: string, description = '') =>
-      request<StoryProject>(root, { method: 'POST', body: json({ title, sourceLang, targetLang, description }),
+    createProject: (title: string, sourceLang: string, targetLang: string, description = '', cast?: unknown) =>
+      request<StoryProject>(root, { method: 'POST', body: json({ title, sourceLang, targetLang, description, ...(cast ? { cast } : {}) }),
         headers: { 'Idempotency-Key': id() } }),
     renameProject: (item: StoryProject, title: string) => request<StoryProject>(`${root}/${item.projectId}`,
       { method: 'PATCH', body: json({ version: item.version, title }) }),
@@ -139,10 +156,33 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
         const approvedSegments = [];
         if (approved) for (let index = 0; index < approved.segmentCount; index++)
           approvedSegments.push((await storyTranslationApi.approvedSegment(metadata, index)).text);
-        entries.push({ metadata, sourceText, segments,
-          ...(approved ? { approvedTranslation: { targetLang: approved.targetLang, segments: approvedSegments } } : {}) });
+        const plans = [];
+        let planCursor: string | null = null;
+        for (let page = 0; page < 50; page++) {
+          const result = await storyTranslationApi.plans(metadata, planCursor ?? undefined);
+          plans.push(...result.items); planCursor = result.nextCursor;
+          if (!planCursor) break;
+          if (page === 49) throw new Error('Có quá nhiều bản dịch để xuất an toàn trong một lần.');
+        }
+        const translationDrafts = [];
+        for (const plan of plans) {
+          const chunks = [];
+          for (let index = 0; index < plan.total; index++) {
+            const chunk = await storyTranslationApi.chunk(metadata, plan.planId, index);
+            const translated = typeof chunk.translatedText === 'string';
+            chunks.push({ sourceText: chunk.sourceText, translated, reviewState: chunk.status,
+              translatedText: translated ? chunk.translatedText : null });
+          }
+          translationDrafts.push({ targetLang: plan.targetLang, sourceRevision: plan.sourceRevision,
+            contentRevision: plan.contentRevision, glossaryRevision: plan.glossaryRevision, chunks });
+        }
+        entries.push({ metadata, sourceText, segments: segments.map(segment => ({ ...segment,
+          status: 'DRAFT', jobId: null, audioKey: null })),
+          ...(approved ? { approvedTranslation: { targetLang: approved.targetLang, segments: approvedSegments } } : {}),
+          ...(translationDrafts.length ? { translationDrafts } : {}) });
       }
       const { cover: _cover, ...backupProject } = project;
+      if (backupProject.cast !== undefined) backupProject.cast = safeStoryCast(backupProject.cast);
       const glossary = await storyTranslationApi.glossary(project.projectId);
       return { format: 'voxa-story-v1', project: { ...backupProject, chapterCount: entries.length },
         glossary, chapters: entries };
@@ -150,9 +190,9 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
     async importProject(value: unknown): Promise<StoryProject> {
       const backup = checkedBackup(value);
       const source = backup.project;
-      const created = await this.createProject(source.title, source.sourceLang, source.targetLang, source.description);
-      if (backup.glossary?.entries.length)
-        await storyTranslationApi.saveGlossary(created.projectId, { revision: 0, entries: backup.glossary.entries });
+      const created = await this.createProject(source.title, source.sourceLang, source.targetLang, source.description,
+        safeStoryCast(source.cast ?? backup.cast));
+      if (backup.glossary) await storyTranslationApi.restoreGlossary(created.projectId, backup.glossary);
       for (const entry of backup.chapters) {
         const chapter = await this.createChapter(created.projectId, entry.metadata.chapterNumber,
           entry.metadata.title, entry.metadata.sourceLang);
@@ -169,6 +209,7 @@ export function createStoryClient(request: StoryRequest, id: () => string, isMis
           await request(`${base}/commit`, { method: 'POST', body: json({ count: entry.approvedTranslation.segments.length,
             targetLang: entry.approvedTranslation.targetLang, version: 0 }) });
         }
+        for (const draft of entry.translationDrafts ?? []) await storyTranslationApi.restoreDraft(saved, draft);
       }
       return created;
     },

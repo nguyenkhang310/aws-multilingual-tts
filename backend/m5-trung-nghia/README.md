@@ -1,5 +1,7 @@
 # M5 — Trung Nghĩa: Submit, điều phối async, ngôn ngữ và kiểm thử
 
+STORY-02 bổ sung pipeline dịch truyện theo chương: snapshot/fingerprint plan, Azure chunk invocation qua worker M2, checkpoint S3/CAS M3, glossary placeholder, review/edit/approve và nối approved revision vào audio plan. Chi tiết API, chunk limit, quota và giới hạn recovery được ghi trong [CONVENTIONS](../../docs/CONVENTIONS.md#story-02--dịch-truyện-theo-chương-và-tạo-audio-tiếng-việt-16112026).
+
 STORY-01A dùng `submit/audiobooks.py` làm handler riêng cho project/chapter/segment; Lambda submit hiện có tái sử dụng Common Layer M3 và jobs bucket, không tạo job TTS hoặc gọi provider. Web có upload chunk/backup, app quản lý cơ bản. M5 cần review validation/error, M3 review storage và M1/M4 review wiring trước deploy. [Hợp đồng](../../docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
 STORY-UI-01 thêm route M5 `POST /audiobooks/{id}/cover-upload`, `POST/GET/DELETE /audiobooks/{id}/cover`; route chỉ chuyển upload ticket/xác nhận/xem/xóa qua M3. Ảnh được xác minh ở M3, không đưa bytes ảnh vào Lambda body hoặc project JSON. M1/M3/M4 cần review trước Sandbox. [Hợp đồng ảnh bìa](../../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
 
@@ -163,3 +165,7 @@ Giới hạn nghiệm thu: callback mô phỏng trong fake Lambda cho thấy bat
 ## TTS-INTEGRATION-03 — Azure preview và duyệt chính tả
 
 `POST /text/preview-translation` nhận `text/sourceLang/targetLang`, gọi worker M2 bằng RequestResponse và adapter Azure Translator hiện có. Response chỉ chứa bản dịch hoặc lỗi đã làm sạch; không tạo job hay trừ quota TTS. Web/app duyệt bản dịch rồi kiểm typo trên text đích, sau đó synthesize với `lang` đích và `translateTo=null`. `/text/translate` Gemini và `translateTo` của client cũ vẫn hoạt động độc lập. Kiểm bằng mock/local; M1/M2/M4 cần review, chưa nghiệm thu trên Sandbox.
+
+## STORY-05 — Ghép MP3 chương
+
+`story_chapter_merge.py` tiến từng lượt qua toàn bộ segment DONE của một audio plan. Mỗi lượt kiểm job/context/S3 ETag, ghi MP3 tạm và checkpoint CAS; khi đủ đoạn, ghép multipart thành file MP3 chương trong audio bucket. GET cấp lại URL nghe/tải, POST tiếp tục nếu còn đang ghép. Không gọi worker hay reserve quota. M3 review helper S3/MP3 và IAM multipart; M1 review route; M4 review web/app. Giới hạn một segment 16 MiB, chưa nghiệm thu AWS thật. [Hợp đồng](../../docs/CONVENTIONS.md#story-05--mp3-hoàn-chỉnh-của-một-chương).

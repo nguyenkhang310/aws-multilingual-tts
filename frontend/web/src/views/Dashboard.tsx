@@ -75,7 +75,6 @@ export default function Dashboard({
         <section className="featured-tool" aria-labelledby="featured-tool-title">
           <div className="featured-copy">
             <h2 id="featured-tool-title">Tạo giọng đọc</h2>
-            <p>Dán nội dung, chọn giọng rồi nghe lại.</p>
             <Button className="primary-button" onClick={() => navigate("studio")}>
               Tạo bản thu
               <Icon name="arrow" size={16} />
@@ -88,13 +87,11 @@ export default function Dashboard({
             {
               id: "translation" as const,
               title: "Dịch và đọc",
-              description: "Đổi ngôn ngữ trước khi tạo giọng",
               icon: "translate",
             },
             {
               id: "voices" as const,
               title: "Chọn giọng đọc",
-              description: "Nghe thử và chọn giọng phù hợp",
               icon: "mic",
             },
           ].map((tool) => (
@@ -102,7 +99,6 @@ export default function Dashboard({
               <Icon name={tool.icon} size={26} className="companion-icon" />
               <span>
                 <strong>{tool.title}</strong>
-                <small>{tool.description}</small>
               </span>
               <Icon name="arrow" size={17} />
             </Button>
@@ -140,7 +136,7 @@ export default function Dashboard({
       </div>
       {statsState === "loading" && <p className="dashboard-note" role="status">Đang tải thống kê…</p>}
       {statsState === "ready" && stats?.totalJobs === 0 &&
-        <p className="dashboard-note" role="status">Chưa có bản thu. Thống kê sẽ cập nhật sau khi bạn tạo giọng đọc.</p>}
+        <p className="dashboard-note" role="status">Chưa có bản thu</p>}
       {(statsState === "unavailable" || statsState === "error") &&
         <div className="dashboard-error" role="alert">
           <span>{statsState === "unavailable"

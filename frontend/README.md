@@ -24,6 +24,8 @@ Cửa sổ phụ có một tiêu đề và phần nội dung cuộn riêng. Nh�
 
 App quay lại theo từng cấp Chương → Truyện → Thư viện → trang trước. Lưu lần đầu giữ nguyên ô nhập và mục đang chọn; phản hồi tải muộn không mở lại màn đã đóng. Web kiểm tra bản nháp khi dùng Back/đổi trang, chọn lại trang hiện tại không khởi tạo lại nội dung. Đóng cửa sổ trả focus về nút mở mà không cuộn lệch trang.
 
+Web lưu mã truy cập và tải lại dữ liệu API trong cùng phiên, giữ bản nháp và trang đang dùng; không tải lại toàn bộ website. Khi đổi mã, dữ liệu phiên cũ và phản hồi đến muộn được loại bỏ. Điều hướng History API xử lý Back/Forward một lần, không đóng hộp thoại do hash trùng. Nút thao tác không gửi form; kéo thả tệp ngoài vùng nhập không mở tệp thay website.
+
 Ảnh bìa JPEG/PNG tối đa 5 MiB tải trực tiếp qua ticket S3 private; API chỉ lưu metadata, URL xem có hạn và được làm mới một lần khi lỗi. Backup gồm nội dung, metadata và bản dịch đã duyệt, **không chứa MP3, ảnh bìa hoặc URL đã ký**. Local Moto mất dữ liệu khi dừng; Sandbox có thể xóa cuối phiên nên cần lưu backup. Callback STORY-01C đã có code và test giả lập, chưa xác minh destination trên AWS; mất callback vẫn cần đối soát/tick. Xem [batch](../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026) và [ảnh bìa](../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
 
 **Tự nhận diện ngôn ngữ** dùng ELD 2.1.1 tại thiết bị, mặc định bật ở phiên soạn mới. Model small được khóa hash bởi `frontend/scripts/verify-eld-model.mjs`, đóng gói cùng web/Expo, không dùng API/key. Kết quả chưa chắc cần chọn thủ công; không gửi `und` cho TTS. Truyện mới chọn Auto giữ `sourceLang=und`; web/app nhận diện chương đầu rồi yêu cầu người dùng xác nhận. Benchmark offline: `cd frontend/app && node --import tsx scripts/benchmark-language.mts`.
@@ -147,6 +149,10 @@ Clone mới tự cài và kiểm chứng ELD trong `npm ci`; có thể kiểm l�
 
 Vite đọc `VITE_API_BASE_URL` lúc khởi động dev server và lúc build. Đổi env cần mở lại dev server/build. **Dịch và đọc** dùng Azure Translator rồi nguồn TTS đã chọn; không có giao diện dịch văn bản bằng Gemini. Gemini TTS là lựa chọn tạo giọng riêng từ ngày 13/11/2026, độc lập OCR/dịch/typo; [cấu hình backend](../deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng).
 
+Trên web/app, **Quét chữ** chọn cách nhận dạng tài liệu, **Dịch văn bản · Azure Translator** chỉ dịch nội dung, **Giọng sau khi dịch** chọn Azure Speech hoặc Gemini TTS. Đổi nguồn tạo giọng giữ ngôn ngữ gốc và bản nháp, chỉ lấy giọng của nguồn đã chọn; sắc thái/cường độ trở về mặc định khi đổi nguồn hoặc giọng. Chọn giọng ở màn dịch chỉ hiển thị ngôn ngữ đích. Lỗi HTTP 401 của Translator cần kiểm key/vùng resource tại backend, không phải lỗi Azure Speech; xem [xử lý lỗi local](../deployment/local/README.md#lỗi-https-dns-và-kết-nối).
+
+Web đặt **Kết quả dịch** ở đầu vùng làm việc sau khi bản thu hoàn tất, có ngôn ngữ đích, nút sao chép và nút nghe/tạm dừng dùng chung player. Kết quả đã nằm trong vùng nhìn không ép cuộn về đầu; nếu chưa thấy thì cuộn nhẹ, tôn trọng giảm chuyển động. Nội dung dài có vùng cuộn riêng; sao chép có xác nhận hoặc thông báo lỗi, không hòa cùng văn bản.
+
 ### App iOS/Android
 
 Node 22.13+ hoặc 24.3+; .nvmrc trong app chọn Node 22. Tạo frontend/app/.env.local:
@@ -220,6 +226,12 @@ Local: dùng cùng `GEMINI_API_KEY`/`GEMINI_MODEL` phía Python, thêm `GEMINI_E
 MP3 lấy thời gian từ đồng hồ tệp, chỉ cho tua khi có duration hữu hạn. Giọng thiết bị chưa biết tổng thời lượng trước khi đọc xong; tiến độ theo nội dung đọc, không dùng số giây ước tính làm thời lượng thật. Đổi bản thu hoặc URL phải dừng phiên cũ và bỏ metadata cũ.
 
 Kiểm ít nhất 320/390/768/1440/2560 px, nội dung/tên giọng dài, sáng/tối, sidebar thu/mở, modal, vùng cuộn và player dock. Native cần kiểm safe area/notch, xoay màn hình, cỡ chữ hệ thống, bàn phím và thao tác xóa/phát khi chuyển màn.
+
+Sidebar thu gọn giữ chiều cao cũ, căn giữa logo/biểu tượng và ẩn dải cuộn; công cụ vẫn cuộn/chọn bằng bàn phím được trên màn hình thấp. Header có dòng “Hệ thống giọng nói đa ngôn ngữ”. Sidebar và thanh phát web dùng chung `control-glass`: nền xuyên thấu, viền phản sáng và bóng tách khỏi nội dung, không làm méo chữ hoặc phủ bộ lọc SVG toàn khung. Thanh phát chỉ hiện khi đã mở bản thu. Giao diện sáng/tối có vật liệu riêng; tăng tương phản, giảm độ trong suốt hoặc trình duyệt thiếu backdrop-filter có nền đọc được. Header giữ tìm kiếm; đã bỏ Xuất báo cáo và các câu giới thiệu lặp.
+
+Ô soạn chỉ giữ lỗi cần xử lý, tiến độ, giới hạn, tên tệp và thông tin gửi ảnh trực tuyến. Tự lưu nháp vẫn chạy nhưng không hiện dòng xác nhận; kiểm tra chính tả thành công không thêm mô tả. Nếu kiểm tra lỗi/timeout/hết lượt, thông báo ngắn nằm ngoài ô nhập, không chặn bản thu nguyên văn.
+
+Thanh tua, âm lượng, tốc độ và cường độ giữ đầu gạt Liquid Glass của Glisse. Con trỏ/cảm ứng dùng bước 0,001 để tránh nhảy theo nấc lớn; phím mũi tên/Page Up/Page Down giữ bước điều chỉnh có ý nghĩa, Home/End về hai đầu. Âm lượng cập nhật ngay; tua giữ preview riêng khi kéo, thả mới áp dụng seek, hủy giữ vị trí thật. Đổi nguồn không áp preview của tệp cũ. Vùng nhận thao tác không làm thanh phát cao thêm.
 
 Web chọn một/hai cột theo chiều rộng thật của vùng soạn thảo; nội dung dài cuộn được và không ép các nút vào khung cố định. Thanh phát kính nổi, căn giữa, tối đa 760 px; màn hình hẹp dùng hai hàng. Vùng nội dung có khoảng cuộn cuối để nút thao tác không bị thanh phát che. Nhập tệp và chụp tài liệu nằm trong thanh công cụ của ô nhập; kéo thả tệp vào ô soạn thảo, tên tệp chỉ hiện sau khi nhập. Sóng 3D giữ ở Tổng quan/trình phát, không đặt đè lên văn bản. Viền focus sáng/tối dùng đủ bốn cạnh.
 

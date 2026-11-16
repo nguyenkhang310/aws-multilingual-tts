@@ -37,16 +37,16 @@ export default function StoryGlossary({ projectId, onBusy, onDirty }: { projectI
       <input disabled={busy} aria-label={`Bản dịch ${index + 1}`} value={item.target} maxLength={120}
         onChange={event => setEntries(current => current.map((entry, n) => n === index
           ? { ...entry, target: event.target.value } : entry))} />
-      <button disabled={busy} onClick={() => setEntries(current => current.filter((_, n) => n !== index))}>Xóa</button>
+      <button type="button" disabled={busy} onClick={() => setEntries(current => current.filter((_, n) => n !== index))}>Xóa</button>
     </div>)}
     <div className="story-glossary-row"><input disabled={busy} placeholder="Nguyên văn" aria-label="Thêm nguyên văn" maxLength={80} value={source}
       onChange={event => setSource(event.target.value)} />
       <input disabled={busy} placeholder="Bản dịch mong muốn" aria-label="Thêm bản dịch" maxLength={120} value={target}
         onChange={event => setTarget(event.target.value)} />
-      <button disabled={!source.trim() || !target.trim() || busy || entries.length >= 200} onClick={() => {
+      <button type="button" disabled={!source.trim() || !target.trim() || busy || entries.length >= 200} onClick={() => {
         setEntries(current => [...current.filter(item => item.source !== source.trim()), { source: source.trim(), target: target.trim() }]);
         setSource(''); setTarget('');
       }}>Thêm</button></div>
-    <button className="primary-button" disabled={busy || !saved || !!source.trim() || !!target.trim() || entries.some(item => !item.source.trim() || !item.target.trim())} onClick={() => void save()}>Lưu thuật ngữ</button>
+    <button type="button" className="primary-button" disabled={busy || !saved || !!source.trim() || !!target.trim() || entries.some(item => !item.source.trim() || !item.target.trim())} onClick={() => void save()}>Lưu thuật ngữ</button>
   </section>;
 }

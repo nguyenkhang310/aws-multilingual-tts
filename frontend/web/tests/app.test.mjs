@@ -5,12 +5,12 @@ import { environment, recording, settle } from "./environment.mjs";
 
 test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite) => {
   const env = await environment();
-  const { api } = await env.load("lib/api.ts");
+  const { api, getDemoToken } = await env.load("lib/api.ts");
   const { default: App } = await env.load("App.tsx");
   const { Modal } = await env.load("components/ui.tsx");
   api.voices = async () => [
-    { lang: "vi-VN", voices: [{ id: "Linh", gender: "F" }], provider: "external", engine: null },
-    { lang: "en-US", voices: [{ id: "Joanna", gender: "F" }], provider: "polly", engine: "neural" },
+    { lang: "vi-VN", voices: [{ id: "Linh", gender: "F" }], provider: "azure", engine: null },
+    { lang: "en-US", voices: [{ id: "Joanna", gender: "F" }], provider: "azure", engine: null },
   ];
   api.history = async () => ({ items: [recording()], nextCursor: null });
   api.stats = async () => ({ totalJobs: 1, totalChars: 17, byLang: { "vi-VN": 1 }, cacheHits: 0 });
@@ -23,7 +23,7 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
   }
   async function type(input, value) {
     await act(async () => {
-      Object.getOwnPropertyDescriptor(env.win.HTMLInputElement.prototype, "value").set.call(input, value);
+      Object.getOwnPropertyDescriptor((input.tagName === 'TEXTAREA' ? env.win.HTMLTextAreaElement : env.win.HTMLInputElement).prototype, "value").set.call(input, value);
       input.dispatchEvent(new env.win.Event("input", { bubbles: true }));
       await settle();
     });
@@ -36,6 +36,7 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
         await click(env.mount.querySelector(`.sidebar a[href="#${route}"]`));
         assert.equal(env.mount.querySelector("h1").textContent, title);
         assert.match(document.title, /TTS Studio/);
+        assert.equal(env.mount.querySelector('.player-dock'), null, 'Không đặt thanh phát trống trên màn hình');
       }
       assert.equal(env.mount.querySelector('.sidebar a[href="#documents"]'), null);
       await click(env.mount.querySelector('[aria-label="Cài đặt"]'));
@@ -69,7 +70,7 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
       await click(env.mount.querySelector('input[name="theme"][value="light"]'));
       assert.equal(document.documentElement.dataset.theme, "light");
     });
-    await suite.test("thanh trên chào Nhóm 5, đặt tên trang bên dưới và xuất báo cáo CSV", async () => {
+    await suite.test("thanh trên gọn, giữ tìm kiếm và không còn xuất báo cáo", async () => {
       await click(env.mount.querySelector('.sidebar a[href="#help"]'));
       const header = env.mount.querySelector('.page-header');
       assert.match(header.querySelector('.header-greeting').textContent, /Chào buổi (sáng|chiều|tối), Nhóm 5/);
@@ -83,19 +84,9 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
       assert.equal(env.mount.querySelector('.sidebar img[alt="HCMUTE"]'), null);
       assert.ok(env.mount.querySelector('.sidebar img[alt="AWS"]'));
       assert.equal(header.querySelector('.header-create'), null);
-      const originalClick = env.win.HTMLAnchorElement.prototype.click;
-      const originalCreate = URL.createObjectURL;
-      let exported, filename;
-      URL.createObjectURL = (blob) => { exported = blob; return "blob:tts-report"; };
-      env.win.HTMLAnchorElement.prototype.click = function () { filename = this.download; };
-      try {
-        await click(header.querySelector('.header-utility'));
-        assert.match(filename, /^tts-studio-report-.*\.csv$/);
-        assert.match(await exported.text(), /Nội dung bản thu/);
-      } finally {
-        env.win.HTMLAnchorElement.prototype.click = originalClick;
-        URL.createObjectURL = originalCreate;
-      }
+      assert.equal(header.querySelector('.header-utility'), null);
+      assert.doesNotMatch(header.textContent, /Xuất báo cáo|Quản lý nội dung/);
+      assert.equal(header.querySelector('.header-subtitle').textContent, 'Hệ thống giọng nói đa ngôn ngữ');
     });
     await suite.test("nút tạo giọng nằm trong ô nhập và submit không tạo bản thu trùng", async () => {
       await click(env.mount.querySelector('.sidebar a[href="#studio"]'));
@@ -215,6 +206,8 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
         assert.equal(submitted[0].translateTo, null);
         assert.equal(submitted[0].text, 'Hello, teacher.');
         assert.match(env.mount.querySelector('.translation-result').textContent, /Hello, teacher/);
+        assert.equal(env.mount.querySelector('.composer .correction-status, .composer .draft-state'), null);
+        assert.equal(env.mount.querySelector('.studio-layout').firstElementChild.classList.contains('translation-result'), true);
       } finally { api.translate = originalTranslate; api.previewTranslation = originalPreview; api.correct = originalCorrect; api.synthesize = originalSynthesize; }
     });
     await suite.test('sửa chính tả cho phép giữ gốc, dùng gợi ý hoặc tự chỉnh trước TTS', async () => {
@@ -323,12 +316,34 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
       await click(env.mount.querySelector('.sidebar a[href="#dashboard"]'));
       assert.match(env.mount.textContent, /Đang tải bản thu/);
       assert.doesNotMatch(env.mount.textContent, /Chưa có bản thu/);
-      await click(env.mount.querySelector('.header-utility'));
-      assert.match(env.mount.textContent, /Đang tải lịch sử để xuất báo cáo/);
-      assert.doesNotMatch(env.mount.textContent, /bạn có bản thu đầu tiên/);
       await act(async () => { reject(new Error("Lịch sử tạm thời chưa tải được")); await settle(); });
       assert.match(env.mount.textContent, /Lịch sử tạm thời chưa tải được/);
       assert.doesNotMatch(env.mount.textContent, /Chưa có bản thu/);
+    });
+    await suite.test('điều hướng trùng không đóng bảng đang dùng; lưu mã giữ trang và bản nháp', async () => {
+      api.history = async () => ({ items: [], nextCursor: null });
+      await act(async () => { env.root.render(React.createElement(App, { key: 'navigation' })); await settle(); });
+      await click(env.mount.querySelector('.sidebar a[href="#translation"]'));
+      const editor = env.mount.querySelector('#editor');
+      await type(editor, 'Bản nháp được giữ nguyên.');
+      await click(env.mount.querySelector('.skip-link'));
+      assert.equal(location.hash, '#translation');
+      assert.equal(document.activeElement, editor);
+      await click(env.mount.querySelector('.speaker-chip'));
+      await act(() => { env.win.dispatchEvent(new env.win.Event('hashchange')); env.win.dispatchEvent(new env.win.Event('popstate')); });
+      assert.ok(env.mount.querySelector('.voice-modal[open]'));
+      await click(env.mount.querySelector('.voice-modal [aria-label="Đóng cửa sổ"]'));
+      await click(env.mount.querySelector('.sidebar a[href="#settings"]'));
+      const root = env.mount.firstElementChild;
+      await type(env.mount.querySelector('#demo-token'), 'fixture-new-token');
+      await click(env.mount.querySelector('.token-form button[type="submit"]'));
+      assert.equal(getDemoToken(), 'fixture-new-token');
+      assert.equal(location.hash, '#settings');
+      assert.equal(env.mount.firstElementChild, root);
+      assert.equal(env.mount.querySelector('.token-form button').disabled, false);
+      await click(env.mount.querySelector('.sidebar a[href="#translation"]'));
+      assert.equal(env.mount.querySelector('#editor').value, 'Bản nháp được giữ nguyên.');
+      assert.equal([...env.mount.querySelectorAll('.composer button')].filter(button => button.type === 'submit').length, 1);
     });
     await suite.test("Escape không đóng hộp thoại trong lúc thao tác chưa hoàn tất", async () => {
       let dismissible = false, closes = 0;

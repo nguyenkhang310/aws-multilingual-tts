@@ -193,7 +193,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
       <div className="story-audio-summary"><span>{chapter.segmentCount} đoạn</span>
         <span>{chapter.textLength.toLocaleString('vi-VN')} ký tự</span>
         {quota !== null && <span>Còn {quota.toLocaleString('vi-VN')} ký tự hôm nay</span>}</div>
-      <button className="primary-button" disabled={!canGenerate} onClick={() => void run(createAndStart)}>
+      <button type="button" className="primary-button" disabled={!canGenerate} onClick={() => void run(createAndStart)}>
         <Icon name="wave" size={18} />{busy ? 'Đang chuẩn bị…' : 'Tạo giọng kể'}
       </button>
   </div>;
@@ -203,7 +203,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
         ? `${languageNames[chapter.sourceLang] || chapter.sourceLang} → ${languageNames[outputLang] || outputLang}`
         : languageNames[outputLang] || outputLang}</span></div>
     {DEMO ? <p>Cần kết nối backend để tạo audio chương.</p> : <>
-      {error && <div role="alert" className="inline-error">{error}{!ready && <button onClick={() => setReload(value => value + 1)}>Tải lại chương</button>}</div>}
+      {error && <div role="alert" className="inline-error">{error}{!ready && <button type="button" onClick={() => setReload(value => value + 1)}>Tải lại chương</button>}</div>}
       {!ready && !error && <p role="status" className="story-hint">Đang tải chương…</p>}
       {!progress?.done && setup}
       {plan && progress && <StoryRunProgress plan={plan} progress={progress} plans={plans}
@@ -227,7 +227,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
         onTop={() => void run(async () => { setProgress(await storyBatchApi.progress(chapter, plan.planId)); setCursor(undefined); })} />}
       {!!progress?.done && <details className="story-create-options"><summary>Giọng kể & tạo mới</summary>{setup}</details>}
       {plan && progress && progress.total > 1 && progress.done === progress.total && <div className="story-merge">
-        <button className="secondary-button" disabled={busy} onClick={() => void run(mergeAudio)}>
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void run(mergeAudio)}>
           {busy ? `Đang gộp ${mergeProgress}/${progress.total} đoạn…` : 'Gộp và tải MP3 cả chương'}
         </button><small>Gộp trên thiết bị; bản thu từng đoạn vẫn dùng được.</small>
       </div>}

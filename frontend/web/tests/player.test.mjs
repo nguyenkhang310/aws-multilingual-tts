@@ -81,6 +81,27 @@ test("Timeline MP3 lấy đồng hồ của tệp, không đoán từ số ký t
       assert.equal(Number(seek().value), 12.3);
       assert.equal(seek().disabled, false);
     });
+    await suite.test("kéo tua xem trước không bị đồng hồ media giật lại; thả mới tua, hủy giữ vị trí", async () => {
+      const pointer = async type => act(() => seek().dispatchEvent(new env.win.PointerEvent(type, { bubbles: true, pointerId: 7, button: 0 })));
+      const change = async value => act(() => {
+        Object.getOwnPropertyDescriptor(env.win.HTMLInputElement.prototype, 'value').set.call(seek(), String(value));
+        seek().dispatchEvent(new env.win.Event('input', { bubbles: true }));
+      });
+      await pointer('pointerdown'); await change(70);
+      assert.equal(seek().dataset.dragging, 'true');
+      assert.equal(audio().currentTime, 12.3, 'Không phát sinh seek liên tục trong lúc kéo');
+      assert.deepEqual(times(), ['1:10', '1:35']);
+      await media('timeupdate', 95.4, 13.2);
+      assert.equal(Number(seek().value), 70, 'Preview không bị đồng hồ đang phát ghi đè');
+      await pointer('pointerup');
+      assert.equal(audio().currentTime, 70);
+      assert.equal(seek().dataset.dragging, undefined);
+      await pointer('pointerdown'); await change(30); await pointer('pointercancel');
+      assert.equal(Number(seek().value), 70);
+      assert.equal(audio().currentTime, 70);
+      await change(37.2);
+      assert.equal(audio().currentTime, 37.2, 'Bàn phím/assistive input cập nhật ngay khi không kéo');
+    });
     await suite.test("đang phát hoặc đang đệm không tự cộng thời gian", async () => {
       await media("play", 95.4, 12.3);
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 230)); });
@@ -142,7 +163,7 @@ test("Giọng thiết bị không dùng thời lượng ước tính làm đồn
     await act(() => spoken.onstart());
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 220)); });
     await act(() => spoken.onboundary({ charIndex: 8 }));
-    assert.ok(parseFloat(env.mount.querySelector(".track-fill").style.width) > 0);
+    assert.ok(parseFloat(env.mount.querySelector(".seek-range").style.getPropertyValue("--lg-progress")) > 0);
     await act(() => env.mount.querySelector('[aria-label="Tạm dừng âm thanh"]').click());
     assert.deepEqual(times(), ["0:00", "—:—"]);
     await new Promise(resolve => setTimeout(resolve, 250));
@@ -152,7 +173,7 @@ test("Giọng thiết bị không dùng thời lượng ước tính làm đồn
     assert.deepEqual(times(), ["0:00", "0:00"]);
     const spokenSeconds = Number(env.mount.querySelector('[aria-label="Vị trí phát"]').max);
     assert.ok(spokenSeconds >= .4 && spokenSeconds < .65, `reading time: ${spokenSeconds}`);
-    assert.equal(env.mount.querySelector(".track-fill").style.width, "100%");
+    assert.equal(env.mount.querySelector(".seek-range").style.getPropertyValue("--lg-progress"), "1");
   } finally {
     await act(() => env.root.unmount()); await env.close();
     if (OriginalUtterance === undefined) delete globalThis.SpeechSynthesisUtterance;

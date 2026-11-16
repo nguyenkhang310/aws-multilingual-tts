@@ -13,8 +13,8 @@ export function skippableCorrection<T>(call: (signal: AbortSignal) => Promise<T>
 
 export function correctionNotice(reason?: string) {
   if (reason === 'GEMINI_QUOTA' || reason === 'GEMINI_DAILY_LIMIT')
-    return 'Hết lượt kiểm tra chính tả bằng Gemini. Bản thu dùng nội dung gốc.';
+    return 'Hết lượt kiểm tra chính tả. Dùng nguyên văn.';
   if (reason === 'GEMINI_TIMEOUT')
-    return 'Gemini phản hồi quá chậm. Bản thu dùng nội dung gốc.';
-  return 'Chưa kiểm tra được chính tả bằng Gemini. Bản thu dùng nội dung gốc.';
+    return 'Kiểm tra chính tả quá hạn. Dùng nguyên văn.';
+  return 'Chưa kiểm tra được chính tả. Dùng nguyên văn.';
 }

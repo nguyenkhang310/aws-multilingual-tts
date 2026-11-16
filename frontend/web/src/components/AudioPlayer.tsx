@@ -34,6 +34,8 @@ export default function AudioPlayer({
   const previousVolume = useRef(volume || .8);
   const { audioRef, source, playing, loading, elapsed, duration, progress, devicePlayback,
     stop, togglePlayback, seek, mediaEvents } = usePlayback(item, volume, repeat, notify);
+  const [scrub, setScrub] = useState<{ source: string; time: number } | null>(null);
+  const position = scrub?.source === source ? scrub.time : elapsed;
   useEffect(() => { if (volume > 0) previousVolume.current = volume; }, [volume]);
   const completed = queue.filter(recording => recording.status === 'DONE');
   const recordings = ordered ? completed : completed.slice().reverse();
@@ -93,7 +95,7 @@ export default function AudioPlayer({
   return (
     <section
       role="region"
-      className={`audio-player ${item ? "has-audio" : ""} ${playing ? "is-playing" : ""}`}
+      className={`audio-player control-glass ${item ? "has-audio" : ""} ${playing ? "is-playing" : ""}`}
       aria-label="Trình phát âm thanh"
     >
       <div className="transport-controls">
@@ -141,23 +143,21 @@ export default function AudioPlayer({
             <strong title={item?.text}>{item ? item.title || item.text : "Chưa có âm thanh"}</strong>
           </div>
           <div className="player-track">
-            <time>{formatTime(elapsed)}</time>
+            <time>{formatTime(position)}</time>
             <div className="audio-track">
-              <span
-                className="track-fill"
-                style={{ width: `${progress * 100}%` }}
-              />
-              <input
-                type="range"
+              <Slider
+                key={source}
                 className="seek-range"
                 aria-label="Vị trí phát"
-                aria-valuetext={devicePlayback ? `Đã đọc ${Math.round(progress * 100)}% nội dung` : duration ? `${formatTime(elapsed)} / ${formatTime(duration)}` : "Chưa xác định thời lượng"}
+                aria-valuetext={devicePlayback ? `Đã đọc ${Math.round(progress * 100)}% nội dung` : duration ? `${formatTime(position)} / ${formatTime(duration)}` : "Chưa xác định thời lượng"}
                 min={0}
                 max={duration || 1}
                 step={0.1}
-                value={Math.min(duration || 1, elapsed)}
+                value={devicePlayback ? progress * (duration || 1) : Math.min(duration || 1, position)}
                 disabled={!item || devicePlayback || !duration}
-                onChange={(e) => seek(Number(e.target.value))}
+                onValueChange={time => setScrub({ source, time })}
+                onValueCommit={time => { seek(time); setScrub(null); }}
+                onGestureCancel={() => setScrub(null)}
               />
             </div>
             <time title={devicePlayback && !duration ? "Thời lượng được xác định khi thiết bị đọc xong" : undefined}>{item && !duration ? "—:—" : formatTime(duration)}</time>

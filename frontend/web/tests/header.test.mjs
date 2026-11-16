@@ -119,7 +119,7 @@ test("Lời chào tự đổi theo buổi, không hiển thị đồng hồ ho�
   };
   env.win.clearInterval = (id) => { timers.delete(id); originalClear.call(env.win, id); };
   try {
-    await act(() => env.root.render(React.createElement(Header, { onMenu: () => {}, onExport: () => {}, children: null })));
+    await act(() => env.root.render(React.createElement(Header, { onMenu: () => {}, children: null })));
     assert.match(env.mount.querySelector('.header-greeting').textContent, /Chào buổi sáng, Nhóm 5/);
     assert.equal(timers.size, 1);
     for (const [nextHour, greeting] of [[12, "Chào buổi chiều"], [18, "Chào buổi tối"], [0, "Chào buổi tối"], [5, "Chào buổi sáng"]]) {

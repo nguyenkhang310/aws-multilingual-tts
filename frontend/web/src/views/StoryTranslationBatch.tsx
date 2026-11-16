@@ -45,10 +45,10 @@ export default function StoryTranslationBatch({ project, chapters, onBusy }: { p
       disabled={running} onChange={event => setSelected(current => event.target.checked
         ? [...current, item.chapterId] : current.filter(id => id !== item.chapterId))} />
       {item.chapterNumber}. {item.title}</label>)}
-    <div className="story-actions"><button disabled={running} onClick={() => setSelected(available.map(item => item.chapterId))}>Chọn tất cả</button>
-      <button className="primary-button" disabled={running || !selected.length} onClick={() => void translateMany()}>
+    <div className="story-actions"><button type="button" disabled={running} onClick={() => setSelected(available.map(item => item.chapterId))}>Chọn tất cả</button>
+      <button type="button" className="primary-button" disabled={running || !selected.length} onClick={() => void translateMany()}>
         Dịch các chương đã chọn</button>
-      {running && <button onClick={() => void pause()}>Tạm dừng</button>}</div>
+      {running && <button type="button" onClick={() => void pause()}>Tạm dừng</button>}</div>
     {running && <p>Đang dịch chương {active?.chapterNumber} · đã xử lý {completed}/{selected.length} chương.</p>}
     {!running && completed > 0 && <p>{completed} chương đã xử lý. Xem bản dịch trong từng chương.</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}

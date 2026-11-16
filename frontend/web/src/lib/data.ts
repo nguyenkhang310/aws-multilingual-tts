@@ -1,5 +1,5 @@
 import { MAX_PART_CHARS as MAX_CHARS } from "../../../shared/documents";
-import type { HistoryItem, Language, Page } from "./types";
+import type { Language, Page } from "./types";
 
 export const navigation: { id: Page; title: string; icon: string }[] = [
   { id: "dashboard", title: "Tổng quan", icon: "dashboard" },
@@ -133,17 +133,4 @@ export function validateInput(text: string, speed: number): string | null {
   if (!Number.isFinite(speed) || speed < MIN_SPEED || speed > MAX_SPEED)
     return "Tốc độ đọc cần nằm trong khoảng 0,7× đến 1,2×.";
   return null;
-}
-
-export function historyCsv(items: HistoryItem[]): string {
-  const rows = [
-    ["Mã bản thu", "Nội dung", "Ngôn ngữ", "Giọng đọc", "Số ký tự", "Tốc độ", "Trạng thái", "Ngày tạo"],
-    ...items.map((item) => [item.jobId, item.text, item.lang, item.voice, item.charCount,
-      item.speed ?? 1, item.status, item.createdAt]),
-  ];
-  return "\uFEFF" + rows.map((row) => row.map((value) => {
-    const text = String(value);
-    const cell = /^\s*[=+\-@]/.test(text) ? "'" + text : text;
-    return `"${cell.replaceAll('"', '""')}"`;
-  }).join(",")).join("\r\n");
 }

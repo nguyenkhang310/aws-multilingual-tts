@@ -1,5 +1,41 @@
 # CHANGELOG — M4
 
+## 2026-11-17 — Kiểm đúng thao tác Tạo giọng đọc
+
+- Thử 8 chu kỳ tạo giọng thường/dịch, chờ PENDING/PROCESSING rồi DONE/FAILED ở 390/1.440 px. Mỗi chu kỳ có đúng một request tạo job và một document ban đầu; URL, định danh trang, DOM ô nhập và nội dung không đổi, không pageerror. API/MP3 giả lập, không gọi provider/AWS thật.
+- Tái hiện cú nhảy ở kết quả dịch: cuộn từ 135 về 0 ngay lập tức khi hoàn tất. Bỏ ép về đầu; chỉ đưa kết quả vào vùng nhìn bằng cuộn mượt khi cần, giữ vị trí nếu kết quả đã thấy; giảm chuyển động dùng cuộn tức thời. Khối kết quả hiện nhẹ bằng opacity, không phát lại animation của toàn trang. Chưa có bằng chứng browser thật của người dùng tải document mới trong thao tác gen.
+- Build web và các kiểm thử luồng tạo giọng/kết quả đạt; bổ sung regression cho kết quả đã thấy/ngoài vùng nhìn/giảm chuyển động. Không đổi API, model, env, app hoặc deploy.
+
+## 2026-11-17 — Giữ phiên web khi thao tác
+
+- Bỏ `location.reload()` khi lưu mã truy cập. Kết nối lại catalog/lịch sử trong phiên, giữ trang và bản nháp; xóa bản thu đang mở/dữ liệu phiên cũ khi đổi mã, bỏ phản hồi cũ đến muộn. Không cho đổi mã khi đang tạo giọng/nhập tài liệu; lỗi lưu bộ nhớ không được coi là đã lưu mã.
+- Điều hướng nội bộ dùng History API và nghe Back/Forward; bỏ sự kiện trùng khi hash vẫn là trang đang mở, tránh đóng bảng chọn/reset tìm kiếm hai lần. Giữ guard bản nháp khi đổi trang. Liên kết bàn phím vào ô nhập giữ đúng màn Dịch và đọc.
+- Khai báo rõ type=button cho các nút thao tác và bộ chọn; chỉ nút gửi form mới submit. Chặn điều hướng mặc định khi thả tệp ngoài vùng nhập, không thay trình xử lý nhập tệp hiện có. Giữ animation/kính và lỗi API hiện trên màn, không reload/fallback.
+- **140 kiểm thử web PASS** với `node --test --test-concurrency=1 tests/*.test.mjs`, production build PASS. Lượt chạy song song trước có một assertion đồng hồ giọng thiết bị lệch thời gian; suite tuần tự đã đạt. **Hai luồng Chrome end-to-end PASS** ở 390/1.440 px: đổi/lưu mã bằng Enter, giữ nháp, Back/Forward, chọn giọng, menu/hộp thoại, tạo truyện, thả tệp ngoài vùng nhập; mỗi luồng chỉ có một request document và cùng định danh trang, không pageerror. API/story dùng fixture/Moto local, không gọi AWS/provider thật; chưa kiểm Safari hoặc deploy.
+
+
+## 2026-11-17 — Rút thông báo trong ô soạn
+
+- Bỏ thông báo kiểm tra chính tả thành công/bỏ qua và trạng thái Đã lưu nháp trong ô nhập; giữ tự lưu bản nháp. Bỏ tiêu đề gợi ý và mô tả chia phần lặp. Lỗi cần xử lý, giới hạn, tiến độ, tên tệp và thông báo gửi ảnh trực tuyến vẫn giữ.
+- Kiểm tra chính tả lỗi/hết lượt/timeout vẫn tạo bản thu nguyên văn theo luồng cũ; web chỉ thông báo ngắn ngoài ô nhập khi bản thu sẵn sàng. App dùng thông báo ngắn, không báo kiểm tra thành công khi chưa kiểm được. Không đổi timeout/model hoặc fallback của dịch/TTS.
+- Web 138 và app 107 kiểm thử local PASS; web build và app typecheck/lint PASS. Kiểm lại luồng web sau khi bỏ trạng thái thừa; không gọi provider/AWS thật, không sửa env hoặc push/deploy.
+
+## 2026-11-17 — Làm rõ kết quả dịch trên web
+
+- Đưa kết quả lên đầu vùng soạn sau khi tạo bản thu, tự cuộn đúng vùng nội dung để thấy kết quả; không đẩy xuống dưới ô nhập. Khối riêng có biểu tượng dịch, tiêu đề, nhãn ngôn ngữ và viền xanh theo theme.
+- Thanh thao tác tách khỏi văn bản: nút Sao chép bản dịch có icon/khung và trạng thái Đã sao chép; lỗi clipboard hiện thông báo và cho thử lại. Nghe bản dịch/Tạm dừng điều khiển cùng trình phát hiện có, không tạo audio thứ hai. Văn bản dài cuộn riêng, giữ xuống dòng và hỗ trợ chiều chữ RTL; các nút xuống hàng khi màn hình hẹp.
+- **138 kiểm thử web PASS**, production build PASS; vẫn có cảnh báo chunk lớn hiện hữu. **8 bố cục/thao tác Chrome PASS** ở 320/390/768/1.440 px, sáng/tối: vị trí kết quả, tự cuộn, copy đúng xuống dòng, văn bản dài cuộn và chỉ một audio. Kiểm phát/tạm dừng từ kết quả trên desktop; API/MP3 dùng fixture local, không gọi provider thật.
+- Không đổi backend/API/provider, app hoặc env/key trong lượt này. Không gọi dịch vụ thật hoặc deploy.
+
+## 2026-11-17 — Kính điều khiển và lựa chọn giọng web/app
+
+- Sidebar/trình phát web dùng chung `control-glass`, nền xuyên thấu, viền phản sáng và bóng nâng; giữ sóng 3D, chuyển động, sáng/tối, tăng tương phản và giảm chuyển động/độ trong suốt. Thanh thu gọn giữ chiều cao cũ, logo/icon căn giữa, không lộ dải cuộn; vẫn cuộn/chọn bằng bàn phím khi khung thấp.
+- Bỏ Xuất báo cáo và code CSV liên quan; không thêm hẹn giờ. Rút mô tả lặp, giữ thông báo gửi ảnh trực tuyến, quota, lỗi và backup. Khôi phục phụ đề “Hệ thống giọng nói đa ngôn ngữ”. Thanh phát chỉ hiện khi mở bản thu; header xuống hàng theo chiều rộng workspace.
+- Giữ đầu gạt Liquid Glass của Glisse, tăng độ phân giải con trỏ/cảm ứng lên 0,001; phím điều hướng giữ bước có ý nghĩa. Âm lượng cập nhật ngay; tua có preview riêng, không bị `timeupdate` giật lại, thả mới seek. Hủy/lost capture/blur bỏ preview; đổi nguồn không áp vị trí của tệp cũ. Giữ dependency và vật liệu kính cũ của đầu gạt.
+- Web/app lọc catalog đúng provider, không gom tất cả nguồn ngoài Gemini vào Azure. Dịch tách ngôn ngữ gốc khỏi nguồn TTS, giữ bản nháp/cặp ngôn ngữ khi còn được hỗ trợ; giọng đích chỉ thuộc ngôn ngữ/nguồn đã chọn. Đổi nguồn/giọng bỏ sắc thái cũ, duyệt cũ hoặc phản hồi xử lý đến muộn không tạo job. Nhãn Quét chữ, Azure Translator và Giọng sau khi dịch phân biệt ba tác vụ. Không thay API dịch, fallback, provider model hoặc key/env.
+- **244 kiểm thử frontend PASS:** web 137, app 107; gồm chuyển provider trong màn dịch, nguồn không có giọng ở provider đích, preview cache và lỗi 401 không tạo MP3/fallback. App typecheck/lint, web build và Expo export iOS/Android/web PASS; Vite còn cảnh báo chunk lớn hiện hữu.
+- **100 trường hợp Chrome local PASS:** 39 bố cục/kính/player ở 320–2.560 px, 12 thao tác tua/âm lượng bằng chuột/cảm ứng giả lập/bàn phím, 14 kiểm tra thanh bên/provider web (gồm khung thấp 320/390 px), 4 chuyển nguồn/cặp ngôn ngữ/sắc thái trên Expo web, 31 luồng tạo giọng/duyệt bản dịch/typo và bố cục web/app. Fixture MP3 có HTTP Range; API dùng Moto và HTTP provider giả, không dùng tài liệu riêng hoặc gọi AWS/Azure/Gemini thật. Không pageerror ở các bộ kiểm này. Chưa xác minh Safari, cảm giác kéo/bàn phím/GlassView trên thiết bị native hoặc xác thực key Translator thật. Chưa commit/push hoặc deploy trong lượt này.
+
 ## 2026-11-16 — Rà điều hướng trước khi đồng bộ các nhánh
 
 - Chặn phản hồi tải truyện/chương đến muộn mở lại màn đã đóng hoặc ghi lên truyện khác; tách phiên tải danh sách và truyện đang mở trên web/app. Đóng modal trả focus với `preventScroll`, tránh cuộn lệch toàn bộ khung.

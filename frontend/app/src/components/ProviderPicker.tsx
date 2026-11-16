@@ -11,7 +11,7 @@ export default function ProviderPicker({ disabled = false }: { disabled?: boolea
         accessibilityState={{ checked: provider === item.value, disabled }} disabled={disabled}
         onPress={() => { if (provider !== item.value) { haptic(); setProvider(item.value); } }}
         style={[styles.option, { backgroundColor: provider === item.value ? colors.surface : 'transparent', opacity: disabled ? 0.5 : 1 }]}>
-        <Label size={15} weight="600" style={{ color: provider === item.value ? colors.blue : colors.secondary }}>{item.value === 'azure' ? 'Azure' : item.value === 'gemini' ? 'Gemini' : item.label}</Label>
+        <Label size={15} weight="600" style={{ color: provider === item.value ? colors.blue : colors.secondary }}>{item.label}</Label>
       </Pressable>)}
     </View>
     {provider === 'gemini' && <Label size={12} muted>{languages[0]?.available === false ? 'Chưa bật Gemini TTS ở máy chủ.' : 'Gemini 3.8 Flash TTS'}</Label>}

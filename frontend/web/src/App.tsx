@@ -8,6 +8,7 @@ import Select from "./components/Select";
 import FilePickerButton from './components/FilePickerButton';
 import CorrectionReview from "./components/CorrectionReview";
 import DocumentReview from './components/DocumentReview';
+import TranslationResult from './components/TranslationResult';
 import { DOCUMENT_MODES, type DocumentMode } from '../../shared/vision';
 import {
   Button,
@@ -23,7 +24,6 @@ import {
   estimateDuration,
   formatNumber,
   formatTime,
-  historyCsv,
   languageNames,
   MAX_CHARS,
   MAX_SPEED,
@@ -83,6 +83,7 @@ export default function App() {
   const [preferences, setPreferences] = useState(getPreferences);
   const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [demoToken, setDemoToken] = useState(getDemoToken);
+  const [connecting, setConnecting] = useState(false);
   useTheme(preferences.theme);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => readStored<boolean>("tts.sidebar.collapsed", false) === true);
   const sidebarMotion = useSidebarMotion(() => setSidebarCollapsed((value) => !value), preferences.reducedMotion);
@@ -125,10 +126,14 @@ export default function App() {
     setQuery("");
     setLanguageFilter("all");
   };
+  const selectProvider = (value: string) => {
+    session.setProvider(value);
+    setLanguageFilter('all');
+  };
   const navigate = useCallback((destination: Page) => {
     if (destination !== pageRef.current && !window.dispatchEvent(new Event('tts:before-navigate', { cancelable: true }))) return;
     pageRef.current = destination;
-    location.hash = destination;
+    if (location.hash !== `#${destination}`) window.history.pushState(null, '', `#${destination}`);
     setPage(destination);
     setDialog(null);
     setQuery("");
@@ -139,6 +144,7 @@ export default function App() {
   useEffect(() => {
     const change = () => {
       const destination = currentPage();
+      if (destination === pageRef.current) return;
       if (destination !== pageRef.current && !window.dispatchEvent(new Event('tts:before-navigate', { cancelable: true }))) {
         window.history.pushState(window.history.state, '', `#${pageRef.current}`);
         return;
@@ -150,14 +156,26 @@ export default function App() {
       setLanguageFilter("all");
     };
     window.addEventListener("hashchange", change);
+    window.addEventListener("popstate", change);
     return () => {
       window.removeEventListener("hashchange", change);
+      window.removeEventListener("popstate", change);
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
   useEffect(() => {
     document.title = `${navigation.find((n) => n.id === page)?.title || (page === "settings" ? "Cài đặt" : "Hướng dẫn")} · TTS Studio`;
   }, [page]);
+  useEffect(() => {
+    const preventFileNavigation = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes('Files')) return;
+      if (event.type === 'drop' && !event.defaultPrevented) notify('Thả tệp vào ô soạn hoặc dùng Nhập tệp.');
+      event.preventDefault();
+    };
+    window.addEventListener('dragover', preventFileNavigation);
+    window.addEventListener('drop', preventFileNavigation);
+    return () => { window.removeEventListener('dragover', preventFileNavigation); window.removeEventListener('drop', preventFileNavigation); };
+  }, [notify]);
   useEffect(() => {
     storeValue("voxa.preferences.v1", preferences);
     document.documentElement.dataset.motion = preferences.reducedMotion ? "reduced" : "auto";
@@ -199,6 +217,7 @@ export default function App() {
   }
 
   const visibleVoices = studio.languages
+    .filter(l => page !== 'translation' || l.lang === target)
     .filter(l => studio.provider !== 'gemini' || l.lang === (languageFilter === 'all' ? studio.language?.lang ?? studio.lang : languageFilter))
     .flatMap((l) => l.voices.map((v) => ({ ...v, lang: l.lang, provider: l.provider })))
     .filter(
@@ -244,27 +263,6 @@ export default function App() {
       deleteLock.current = false;
       setDeleting(false);
     }
-  }
-
-  function exportReport() {
-    if (studio.loadingHistory && !studio.history.length) {
-      notify("Đang tải lịch sử để xuất báo cáo. Vui lòng thử lại sau.");
-      return;
-    }
-    if (!studio.history.length) {
-      navigate("library");
-      notify(studio.historyError || "Báo cáo sẽ sẵn sàng khi bạn có bản thu đầu tiên.", !!studio.historyError);
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([historyCsv(studio.history)], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `tts-studio-report-${new Date().toLocaleDateString("sv-SE")}.csv`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    notify(`Đã xuất ${formatNumber(studio.history.length)} bản thu.${studio.nextCursor ? " Tải thêm lịch sử để xuất các bản thu còn lại." : ""}`);
   }
 
   function renderPreferences() {
@@ -343,10 +341,10 @@ export default function App() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </label>
-          {!DEMO && studio.providers.length > 1 && <Select label="Nguồn giọng đọc" value={studio.provider} onValueChange={studio.setProvider}
+          {!DEMO && studio.providers.length > 1 && <Select label="Nguồn giọng đọc" value={studio.provider} onValueChange={selectProvider}
             options={studio.providers} disabled={studio.busy} />}
-          <Select label="Lọc ngôn ngữ giọng đọc" value={languageFilter} onValueChange={setLanguageFilter}
-            options={[{ value: "all", label: "Tất cả ngôn ngữ" }, ...studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />
+          {page !== 'translation' && <Select label="Lọc ngôn ngữ giọng đọc" value={languageFilter} onValueChange={setLanguageFilter}
+            options={[{ value: "all", label: "Tất cả ngôn ngữ" }, ...studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />}
         </div>
         {studio.voiceError ? (
           <div className="inline-error" role="alert">
@@ -364,12 +362,12 @@ export default function App() {
           <div className="voice-grid">
             {visibleVoices.map((v) => (
               <article
-                className={`voice-card ${studio.lang === v.lang && studio.voice === v.id ? "selected" : ""}`}
+                className={`voice-card ${studio.language?.lang === v.lang && studio.voice === v.id ? "selected" : ""}`}
                 key={`${v.lang}-${v.id}`}
               >
                 <div className="voice-card-top">
                   <VoiceAvatar id={v.name ?? v.id} large />
-                  {studio.lang === v.lang && studio.voice === v.id && (
+                  {studio.language?.lang === v.lang && studio.voice === v.id && (
                     <span className="selected-label">
                       <Icon name="check" size={12} />
                       Đang chọn
@@ -417,8 +415,8 @@ export default function App() {
         href="#editor"
         onClick={(e) => {
           e.preventDefault();
-          if (page !== "studio") navigate("studio");
-          window.setTimeout(() => studio.editorRef.current?.focus(), 0);
+          if (!isStudio) navigate("studio");
+          window.setTimeout(() => (page === 'translation' ? translationEditor : speechEditor).editorRef.current?.focus(), 0);
         }}
       >
         Chuyển đến ô nhập văn bản
@@ -429,7 +427,7 @@ export default function App() {
           onToggle={sidebarMotion.toggleWithMotion}
           onNavigate={navigate} />
         <div className="workspace">
-          <PageHeader onMenu={() => openDialog("menu")} onExport={exportReport}>
+          <PageHeader onMenu={() => openDialog("menu")}>
             <HeaderSearch pages={pages} history={studio.history} languages={studio.languages} onNavigate={navigate}
               onRecording={(item) => { navigate("library"); void playRecording(item); }} />
           </PageHeader>
@@ -458,11 +456,6 @@ export default function App() {
                 </section>
                 <section className="connection-card surface">
                   <h2>{DEMO ? "Nghe thử trên máy" : "Kết nối máy chủ"}</h2>
-                  <p>
-                    {DEMO
-                      ? "Giọng đọc và lịch sử chạy trên thiết bị. Kết nối máy chủ để tạo MP3 và dịch tự động."
-                      : "Giọng đọc, âm thanh và lịch sử được lấy từ dịch vụ của nhóm."}
-                  </p>
                   <div>
                     <span>Lịch sử</span>
                     <strong>{DEMO ? "Trình duyệt này" : "Máy chủ"}</strong>
@@ -474,10 +467,15 @@ export default function App() {
                   {!DEMO && (
                     <form
                       className="token-form"
-                      onSubmit={(event) => {
+                      onSubmit={async (event) => {
                         event.preventDefault();
-                        saveDemoToken(demoToken);
-                        window.location.reload();
+                        if (connecting || speechEditor.busy || translationEditor.busy || speechEditor.readingFile || translationEditor.readingFile) return;
+                        const changed = demoToken.trim() !== getDemoToken();
+                        if (!saveDemoToken(demoToken)) { notify('Không lưu được mã truy cập trên thiết bị.', true); return; }
+                        if (!changed) { notify('Mã truy cập đã được lưu.'); return; }
+                        setConnecting(true);
+                        try { await session.reconnect(); notify('Đã cập nhật kết nối.'); }
+                        finally { setConnecting(false); }
                       }}
                     >
                       <label htmlFor="demo-token">Mã truy cập</label>
@@ -485,10 +483,11 @@ export default function App() {
                         id="demo-token"
                         type="password"
                         autoComplete="off"
+                        disabled={connecting || speechEditor.busy || translationEditor.busy || speechEditor.readingFile || translationEditor.readingFile}
                         value={demoToken}
                         onChange={(event) => setDemoToken(event.target.value)}
                       />
-                      <button type="submit">Lưu mã</button>
+                      <button type="submit" disabled={connecting || speechEditor.busy || translationEditor.busy || speechEditor.readingFile || translationEditor.readingFile}>{connecting ? 'Đang kết nối…' : 'Lưu mã'}</button>
                     </form>
 
                   )}
@@ -534,6 +533,9 @@ export default function App() {
             )}
             {isStudio && (
               <div className="studio-layout">
+                {page === 'translation' && studio.currentAudio && (studio.currentAudio.translated || studio.translationResult?.jobId === studio.currentAudio.jobId) &&
+                  <TranslationResult key={studio.currentAudio.jobId} item={studio.currentAudio} playing={playingJobId === studio.currentAudio.jobId}
+                    onPlay={() => void playRecording(studio.currentAudio!)} notify={notify} />}
                 <section className="editor-panel" aria-label="Soạn thảo văn bản">
                   <form
                     className="composer surface"
@@ -563,8 +565,8 @@ export default function App() {
                         <Icon name="chevron" size={13} />
                       </Button>
                       <div className="editor-import-actions">
-                        <Select label="Cách đọc tài liệu" value={studio.documentMode} onValueChange={value => studio.setDocumentMode(value as DocumentMode)}
-                          disabled={studio.busy || studio.readingFile} options={DOCUMENT_MODES} />
+                        <div className="document-method"><span>Quét chữ</span><Select label="Cách đọc tài liệu" value={studio.documentMode} onValueChange={value => studio.setDocumentMode(value as DocumentMode)}
+                          disabled={studio.busy || studio.readingFile} options={DOCUMENT_MODES} /></div>
                         {studio.documentMode === 'device' && <Select label="Ngôn ngữ tài liệu" value={studio.documentLang} onValueChange={studio.setDocumentLang}
                           disabled={studio.busy || studio.readingFile} options={OCR_LANGUAGES} />}
                         <FilePickerButton label={studio.readingFile ? 'Đang nhập…' : 'Nhập tệp'}
@@ -595,7 +597,6 @@ export default function App() {
                       {studio.batch && <><span role="status">Đã xong {studio.batch.done}/{studio.batch.total} phần</span>
                         <Button type="button" onClick={studio.stopBatch}>Dừng sau phần hiện tại</Button></>}
                       <details><summary>Xem phần {studio.partIndex + 1} sẽ được đọc</summary><p className="part-preview">{studio.parts[studio.partIndex]}</p></details>
-                      <p>Mỗi phần có bản thu riêng trong Lịch sử. {page === 'translation' ? 'Duyệt lần lượt từng phần trước khi tạo giọng.' : 'Phần đã xong được giữ lại khi dừng hoặc gặp lỗi.'}</p>
                     </div>}
                     <label className="sr-only" htmlFor="editor">
                       Văn bản cần chuyển thành giọng nói
@@ -620,7 +621,6 @@ export default function App() {
                     />
                     {!studio.text && page === "studio" && (
                       <div className="starter-presets">
-                        <span>Bắt đầu với</span>
                         <div>
                           {starterPresets.map((preset) => (
                             <Button
@@ -643,7 +643,7 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {(page !== "studio" || studio.error || studio.busy || studio.correctionNotice) && (
+                    {(page !== "studio" || studio.error || studio.busy) && (
                       <div className="editor-footer">
                         {page !== "studio" && (
                           <Button className="secondary-button" disabled={studio.busy} onClick={studio.useSample}>
@@ -657,7 +657,6 @@ export default function App() {
                             <span>{studio.error}</span>
                           </div>
                         )}
-                        {studio.correctionNotice && <p className="correction-status" role="status">{studio.correctionNotice}</p>}
                         {studio.busy && (
                           <div className="job-progress" role="status">
                             <div>
@@ -677,9 +676,6 @@ export default function App() {
                       <span id="text-count" className={studio.text.length > MAX_DOCUMENT_CHARS ? "over-limit" : ""}>
                         {formatNumber(studio.text.length)}
                         <span> / {formatNumber(MAX_DOCUMENT_CHARS)} ký tự · {formatNumber(wordCount(studio.text))} từ</span>
-                        {studio.text && studio.draftSaved && (
-                          <span className="draft-state"><Icon name="check" size={12} />Đã lưu nháp</span>
-                        )}
                       </span>
                       <div>
                         <span className="duration-estimate">
@@ -719,30 +715,26 @@ export default function App() {
                       </div>
                     </div>
                   </form>
-                  {page === "translation" && studio.currentAudio && (studio.currentAudio.translated || studio.translationResult?.jobId === studio.currentAudio.jobId) && <section className="surface translation-result" aria-label="Bản dịch">
-                    <h2>Bản dịch · {languageNames[studio.currentAudio.lang] || studio.currentAudio.lang}</h2>
-                    <p>{studio.currentAudio.text}</p>
-                    <Button type="button" onClick={() => { void navigator.clipboard.writeText(studio.currentAudio!.text).then(() => notify("Đã sao chép bản dịch.")).catch(() => notify("Không sao chép được. Hãy chọn và sao chép văn bản.", true)); }}>Sao chép bản dịch</Button>
-                  </section>}
                 </section>
                 <aside className="voice-settings surface" aria-label="Cài đặt giọng đọc">
                   <div className="settings-heading">
                     <h2>Cài đặt giọng</h2>
                   </div>
                   <div className="setting-field">
-                    <label htmlFor="tts-provider">Nguồn giọng đọc</label>
+                    <label htmlFor="tts-provider">{page === 'translation' ? 'Giọng sau khi dịch' : 'Nguồn giọng đọc'}</label>
                     {!DEMO && studio.providers.length > 1 ? <Select id="tts-provider" label="Nguồn giọng đọc" value={studio.provider}
-                      onValueChange={studio.setProvider} options={studio.providers} disabled={studio.busy || studio.readingFile} /> :
+                      onValueChange={selectProvider} options={studio.providers} disabled={studio.busy || studio.readingFile} /> :
                       <div className="engine-label"><Icon name="layers" size={17} /><span>{DEMO ? 'Giọng trên máy' : providerLabel(studio.language?.provider)}</span></div>}
                     {studio.provider === 'gemini' && <small>{studio.language?.available === false ? 'Chưa bật Gemini TTS ở máy chủ.' : 'Gemini 3.8 Flash TTS'}</small>}
                   </div>
+                  {page === 'translation' && <div className="setting-field translation-provider"><span>Dịch văn bản</span><strong>Azure Translator</strong></div>}
                   <div className="setting-field">
                     <label htmlFor="language">{page === "translation" ? "Ngôn ngữ gốc" : "Ngôn ngữ"}</label>
                     <Select id="language" label={page === "translation" ? "Ngôn ngữ gốc" : "Ngôn ngữ"}
                       value={studio.autoLanguage ? 'auto' : studio.lang} onValueChange={studio.setLang} disabled={studio.busy || studio.readingFile || studio.loadingVoices}
-                      options={[{ value: 'auto', label: 'Tự nhận diện' }, ...studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />
+                      options={[{ value: 'auto', label: 'Tự nhận diện' }, ...studio.sourceLanguages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />
                     {studio.autoLanguage && <small role="status">{studio.languageDetection?.status === 'detected'
-                      ? studio.languages.some(item => item.lang === studio.languageDetection?.language && item.voices.length)
+                      ? studio.sourceLanguages.some(item => item.lang === studio.languageDetection?.language)
                         ? `Đã nhận diện: ${languageNames[studio.languageDetection.language || ''] || studio.languageDetection.language}`
                         : 'Ngôn ngữ dự đoán chưa có giọng ở nguồn hiện tại. Hãy chọn thủ công.'
                       : studio.languageDetection?.status === 'mixed' ? 'Văn bản có nhiều ngôn ngữ. Hãy chọn thủ công.'
@@ -790,7 +782,7 @@ export default function App() {
                       </Button>
                     </div>
                   )}
-                  {page === "studio" && <Toggle label="Kiểm tra chính tả bằng AI" description="Tắt để tạo giọng nhanh hơn; bật để duyệt gợi ý trước khi đọc."
+                  {page === "studio" && <Toggle label="Kiểm tra chính tả bằng AI" description="Duyệt gợi ý trước khi tạo giọng."
                     checked={studio.checkSpelling} onChange={studio.setCheckSpelling} />}
                   <div className="setting-field">
                     <label htmlFor="speaking-style">Sắc thái</label>
@@ -805,7 +797,6 @@ export default function App() {
                     <Slider id="style-intensity" min={0.1} max={2} step={0.1} value={studio.styleIntensity}
                       disabled={studio.busy} onValueChange={studio.setStyleIntensity} />
                     <div className="range-labels"><span>Nhẹ · 0,1</span><span>Mạnh · 2,0</span></div>
-                    {studio.provider === 'gemini' && <small>Mức tương đối; âm thanh có thể khác Azure.</small>}
                   </div>}
                   <div className="setting-field speed-field">
                     <div className="field-heading">
@@ -973,7 +964,7 @@ export default function App() {
               </section>
             )}
           </main>
-          {(isStudio || page === "library" || studio.currentAudio) && (
+          {studio.currentAudio && (
             <div className="player-dock">
               <AudioPlayer
                 item={studio.currentAudio}

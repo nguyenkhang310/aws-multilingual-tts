@@ -14,7 +14,7 @@ export default function Select({ id, label, value, onValueChange, options, disab
   const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   return <Primitive.Root value={options.some((option) => option.value === value) ? value : ""}
     onValueChange={onValueChange} disabled={disabled || !options.length}>
-    <Primitive.Trigger ref={setTrigger} id={id} aria-label={label} className="select-trigger">
+    <Primitive.Trigger type="button" ref={setTrigger} id={id} aria-label={label} className="select-trigger">
       <Primitive.Value placeholder={options.length ? placeholder : "Đang tải…"} />
       <Primitive.Icon><Icon name="chevron" size={14} /></Primitive.Icon>
     </Primitive.Trigger>

@@ -8,16 +8,16 @@ test("Luồng tạo giọng và dữ liệu đến không đúng thứ tự", as
   const { api, DEMO } = await env.load("lib/api.ts");
   const { useStudio } = await env.load("hooks/useStudio.ts");
   assert.equal(DEMO, false);
-  const languages = [{ lang: "vi-VN", voices: [{ id: "Linh", gender: "F" }], provider: "external", engine: null },
+  const languages = [{ lang: "vi-VN", voices: [{ id: "Linh", gender: "F" }], provider: "azure", engine: null },
     { lang: "en-US", voices: [{ id: "English", gender: "F", styles: ['cheerful', 'sad'], styleIntensityRange: [0.1, 2] }], provider: "azure", engine: null, translationEnabled: true, autoEmotionEnabled: true },
     { lang: "en-US", voices: [{ id: "GeminiVoice", gender: "F" }], provider: "gemini", engine: null },
     { lang: "vi-VN", voices: [{ id: "GeminiVi", gender: "F", styles: ['cheerful'] }], provider: "gemini", engine: null }];
-  let studio, revision = 0, checked = [], submitted = [];
+  let studio, revision = 0, checked = [], submitted = [], notices = [];
   const correction = (text) => ({ status: "checked", language: "vi-VN", hasTypos: true, originalText: text,
     correctedText: "tôi muốn nghe", changes: [{ from: "toi", to: "tôi", start: 0, end: 3 }] });
-  function Harness({ target = null }) { studio = useStudio(() => {}, target); return null; }
+  function Harness({ target = null }) { studio = useStudio(message => notices.push(message), target); return null; }
   async function mount(text = "toi muon nghe", target = null, correctionEnabled = true) {
-    checked = []; submitted = [];
+    checked = []; submitted = []; notices = [];
     api.voices = async () => languages;
     api.history = async () => ({ items: [], nextCursor: null });
     api.synthesize = async (input) => { submitted.push(input); return recording(); };
@@ -133,7 +133,7 @@ test("Luồng tạo giọng và dữ liệu đến không đúng thứ tự", as
       await mount(); api.correct = async () => { throw new Error("Mất kết nối"); };
       await act(async () => { await studio.generate(); });
       assert.equal(submitted[0].text, "toi muon nghe"); assert.equal(studio.error, "");
-      assert.match(studio.correctionNotice, /Chưa kiểm tra được/);
+      assert.match(notices.at(-1), /Chưa kiểm tra được/);
       await mount();
       api.correct = async (text, lang) => { checked.push(text); return { status: "skipped", language: lang,
         hasTypos: false, originalText: text, correctedText: text, changes: [] }; };
@@ -141,7 +141,7 @@ test("Luồng tạo giọng và dữ liệu đến không đúng thứ tự", as
       assert.equal(checked.length, 1);
       assert.equal(submitted[0].text, "toi muon nghe");
       assert.equal(studio.review, null);
-      assert.match(studio.correctionNotice, /Chưa kiểm tra được/);
+      assert.match(notices.at(-1), /Chưa kiểm tra được/);
     });
     await suite.test("sửa văn bản làm mất hiệu lực đề xuất cũ", async () => {
       await mount(); api.correct = async (text) => correction(text);

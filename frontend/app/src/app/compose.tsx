@@ -46,7 +46,12 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const [draft, setDraft] = mode === 'translation'
     ? [studio.translationDraft, studio.setTranslationDraft]
     : [studio.draft, studio.setDraft];
-  const { colors, isDark, lang, voice, speed, setSpeed, selectVoice, languages, loadingVoices, saveRecording, setNotice } = studio;
+  const { colors, isDark, lang: speechLang, voice, speed, setSpeed, selectVoice, languages, loadingVoices, saveRecording, setNotice } = studio;
+  const [translationLang, setTranslationLang] = useState('vi-VN');
+  const lang = mode === 'translation' ? translationLang : speechLang;
+  const sourceLanguages = useMemo(() => mode === 'translation'
+    ? studio.allLanguages.filter((item, index, list) => list.findIndex(other => other.lang === item.lang) === index)
+    : languages, [languages, studio.allLanguages, mode]);
   const { play, stop } = usePlayback();
   const { gutter, usableHeight } = useLayout();
   const [sheet, setSheet] = useState<'voices' | 'settings' | 'source' | 'target' | 'ocr' | null>(null);
@@ -61,8 +66,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const target = languages.some(l => l.lang === selectedTarget) || !languages.length
     ? selectedTarget : languages.find(l => l.lang !== lang)?.lang ?? selectedTarget;
   const [targetVoice, setTargetVoice] = useState('Joanna');
-  const [selectedStyle, setStyle] = useState('neutral');
-  const [styleIntensity, setStyleIntensity] = useState(1);
+  const [expressionSelection, setExpressionSelection] = useState({ key: '', style: 'neutral', intensity: 1 });
   const [checkSpelling, setCheckSpelling] = useState(false);
   const [autoLanguage, setAutoLanguage] = useState(true);
   const [languageDetection, setLanguageDetection] = useState<LanguageDetection | null>(null);
@@ -119,11 +123,12 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
       setDetectedDraft(draft);
       setLanguageDetection(found);
       if (found.status !== 'detected' || !found.language || found.language === lang) return;
+      if (mode === 'translation') { setTranslationLang(found.language); return; }
       const next = languages.find(item => item.lang === found.language && item.voices.length);
       if (next) selectVoice(found.language, next.voices.some(item => item.id === voice) ? voice : next.voices[0].id);
     }, 320);
     return () => { active = false; clearTimeout(timer); };
-  }, [draft, autoLanguage, languages, lang, voice, selectVoice]);
+  }, [draft, autoLanguage, languages, lang, voice, selectVoice, mode]);
   useEffect(() => () => { token.current++; correctionWait.current?.abort(); importRevision.current++; if (pdfTimer.current) clearTimeout(pdfTimer.current); }, []);
   const selectedTargetVoice = languages.find(l => l.lang === target)?.voices.find(v => v.id === targetVoice)?.id ?? languages.find(l => l.lang === target)?.voices[0]?.id ?? '';
   const readyLanguage = async (): Promise<string | null> => {
@@ -136,6 +141,10 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
     if (found.status !== 'detected' || !found.language) {
       setError('Chưa xác định rõ ngôn ngữ. Hãy chọn thủ công.'); return null;
     }
+    if (mode === 'translation') {
+      if (!sourceLanguages.some(item => item.lang === found.language)) { setError('Hãy chọn ngôn ngữ gốc thủ công.'); return null; }
+      setTranslationLang(found.language); return found.language;
+    }
     const next = languages.find(item => item.lang === found.language && item.voices.length);
     if (!next) {
       setError('Nguồn giọng hiện tại chưa hỗ trợ ngôn ngữ dự đoán. Hãy chọn thủ công.'); return null;
@@ -147,6 +156,12 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   };
   const voiceLanguage = languages.find(l => l.lang === (mode === 'translation' ? target : lang));
   const availableVoice = voiceLanguage?.voices.find(v => v.id === (mode === 'translation' ? selectedTargetVoice : voice));
+  const expressionKey = `${studio.provider}:${availableVoice?.id ?? ''}`;
+  if (expressionSelection.key !== expressionKey) setExpressionSelection({ key: expressionKey, style: 'neutral', intensity: 1 });
+  const selectedStyle = expressionSelection.key === expressionKey ? expressionSelection.style : 'neutral';
+  const styleIntensity = expressionSelection.key === expressionKey ? expressionSelection.intensity : 1;
+  const setStyle = (style: string) => setExpressionSelection(previous => ({ ...previous, key: expressionKey, style }));
+  const setStyleIntensity = (intensity: number) => setExpressionSelection(previous => ({ ...previous, key: expressionKey, intensity }));
   const styleOptions = expressionOptions(availableVoice?.styles, voiceLanguage?.autoEmotionEnabled);
   const style = styleOptions.some(item => item.value === selectedStyle) ? selectedStyle : 'neutral';
   const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(voiceLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {}) };
@@ -216,7 +231,6 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
       if (id !== token.current) return;
       if (draftRef.current !== draft) { finish(); return; }
       if (correction?.status === 'skipped') { checkedTexts.current.add(correctionKey); setNotice(correctionFailureNotice(correction.reason)); }
-      else if (correction?.status === 'checked' && !correction.hasTypos) setNotice('Gemini không phát hiện lỗi đánh máy.');
       if (correction?.status === 'checked' && correction.hasTypos && correction.correctedText !== input.text) {
         pendingInput.current = { input, document: draft, index, limit: partLimit, approvalKey: key };
         setReview(correction); setStage(''); return;
@@ -416,7 +430,11 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
       <Header title={title} left={<Circle name="close" label="Đóng trang soạn thảo" disabled={busy} onPress={close} />}
         right={keyboard.visible ? <Circle name="keyboard" label="Ẩn bàn phím" onPress={Keyboard.dismiss} /> : undefined} />
       <PageScroll onLayout={event => setViewportHeight(event.nativeEvent.layout.height)} contentContainerStyle={{ flexGrow: 1, gap: 12 }}>
-        {!keyboard.visible && <ProviderPicker disabled={busy || importing} />}
+        {!keyboard.visible && <>
+          {mode === 'translation' && <Label size={12} muted>Dịch · Azure Translator</Label>}
+          {studio.providers.length > 1 && <Label size={13} weight="600">{mode === 'translation' ? 'Giọng sau khi dịch' : 'Nguồn giọng đọc'}</Label>}
+          <ProviderPicker disabled={busy || importing} />
+        </>}
         {mode === 'speech' && <Action disabled={busy || importing} onPress={() => setSheet('source')}>
           {autoLanguage ? `Tự nhận diện · ${languageNames[lang] ?? lang}` : `Ngôn ngữ · ${languageNames[lang] ?? lang}`}
         </Action>}
@@ -444,7 +462,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
           {Platform.OS !== 'web' && <Action icon="camera" style={styles.importAction} disabled={busy || importing} accessibilityLabel="Quét tài liệu bằng camera" onPress={() => void scanPage()}>Quét tài liệu</Action>}
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Cách đọc tài liệu" disabled={busy || importing} onPress={() => setSheet('ocr')}
-          style={styles.documentLanguage}><Icon name="globe" size={15} color={colors.secondary} /><Label size={13} muted>{documentMode === 'gemini' ? 'Gemini · Trực tuyến' : OCR_LANGUAGES.find(item => item.value === documentLang)?.label}</Label><Icon name="next" size={12} color={colors.secondary} /></Pressable>
+          style={styles.documentLanguage}><Icon name="globe" size={15} color={colors.secondary} /><Label size={13} muted>Quét chữ · {documentMode === 'gemini' ? 'Gemini · Trực tuyến' : OCR_LANGUAGES.find(item => item.value === documentLang)?.label}</Label><Icon name="next" size={12} color={colors.secondary} /></Pressable>
         {documentMode === 'gemini' && <Label size={12} muted>Ảnh và trang scan được gửi tới Gemini để đọc chữ.</Label>}</>}
         {importing && <><Label size={13} muted>{importStage || 'Đang đọc tài liệu…'}</Label><Action onPress={cancelImport}>Hủy nhập</Action></>}
         {parts.length > 1 && !keyboard.visible && <View style={{ gap: 10 }}>
@@ -453,7 +471,6 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
             <Action disabled={busy || selectedPart >= parts.length - 1} onPress={() => setPartIndex(selectedPart + 1)}>Phần sau</Action></View>
           <Label muted size={12}>{parts[selectedPart].slice(0, 180)}…</Label>
           <Action disabled={busy || importing} onPress={() => void generateAll()}>{mode === 'translation' || checkSpelling ? 'Duyệt phần kế tiếp' : 'Tạo các phần còn lại'}</Action>
-          {(mode === 'translation' || checkSpelling) && <Label size={12} muted>Mỗi phần được duyệt trước khi tạo giọng.</Label>}
         </View>}
         <View style={[styles.editorSurface, { borderColor: colors.line, backgroundColor: colors.surface }]}>
         <TextInput accessibilityLabel="Nội dung cần đọc" value={draft} onChangeText={text => { setDraft(text); setError(''); setImportWarning(''); }} editable={!busy && !importing}
@@ -535,8 +552,11 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
     </Sheet>
     <Sheet title={sheet === 'source' ? 'Ngôn ngữ gốc' : 'Dịch sang'} visible={sheet === 'source' || sheet === 'target'} close={() => setSheet(null)}>
       {sheet === 'source' && <Action onPress={() => { languageChoiceRevision.current++; setAutoLanguage(true); setSheet(null); }}>Tự nhận diện</Action>}
-      {languages.filter(l => l.voices.length).map(l => <Action key={l.lang} onPress={() => {
-        if (sheet === 'source') { languageChoiceRevision.current++; setAutoLanguage(false); setLanguageDetection(null); selectVoice(l.lang, l.voices[0].id); }
+      {(sheet === 'source' ? sourceLanguages : languages).filter(l => l.voices.length).map(l => <Action key={l.lang} onPress={() => {
+        if (sheet === 'source') {
+          languageChoiceRevision.current++; setAutoLanguage(false); setLanguageDetection(null);
+          if (mode === 'translation') setTranslationLang(l.lang); else selectVoice(l.lang, l.voices[0].id);
+        }
         else { setTarget(l.lang); setTargetVoice(l.voices[0].id); }
         setSheet(null);
       }}>{languageNames[l.lang] ?? l.lang}</Action>)}

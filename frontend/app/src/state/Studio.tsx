@@ -34,7 +34,7 @@ function useStudioState() {
   const [catalog, setLanguages] = useState<Language[]>(DEMO ? demoLanguages : []);
   const [selectedProvider, setProvider] = useState('');
   const provider = catalog.some(l => l.provider === selectedProvider) ? selectedProvider : catalog[0]?.provider ?? '';
-  const languages = useMemo(() => catalog.filter(l => provider === 'gemini' ? l.provider === 'gemini' : l.provider !== 'gemini'), [catalog, provider]);
+  const languages = useMemo(() => catalog.filter(l => DEMO || l.provider === provider), [catalog, provider]);
   const providers = useMemo(() => providerOptions(catalog), [catalog]);
   // Tạo giọng đọc và Dịch và đọc giữ bản nháp riêng; bản nháp cũ trước khi tách thuộc về Tạo giọng đọc.
   const [draft, setDraft] = useState('');

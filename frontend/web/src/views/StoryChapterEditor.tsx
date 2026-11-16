@@ -93,12 +93,12 @@ export default function StoryChapterEditor({ chapter, projectLang, targetLang, o
     return () => { window.removeEventListener('beforeunload', warn); window.removeEventListener('tts:before-navigate', leave); };
   }, [changed, busy, onDirty]);
   return <><h2 className="story-chapter-heading">{chapter.title}</h2><div className="story-editor-tabs" role="group" aria-label="Mục của chương">
-    {(['audio', 'text', 'translation'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''}
+    {(['audio', 'text', 'translation'] as const).map(value => <button type="button" key={value} className={tab === value ? 'active' : ''}
       aria-pressed={tab === value} disabled={(translationDirty && value !== tab) || (value !== 'text' && (dirty || !chapter.contentRevision))} onClick={() => setTab(value)}>
       {value === 'text' ? 'Nội dung' : value === 'translation' ? 'Bản dịch' : 'Nghe & tạo giọng'}</button>)}
   </div><section hidden={tab !== 'text'} className="surface story-panel story-editor" aria-label="Chỉnh chương">
     <div className="story-actions story-editor-heading"><h3>Nội dung chương</h3>
-      <button className="story-danger" disabled={busy || loading} onClick={onDelete}>Xóa chương</button><button disabled={busy || loading} onClick={onClose}>Đóng</button></div>
+      <button type="button" className="story-danger" disabled={busy || loading} onClick={onDelete}>Xóa chương</button><button type="button" disabled={busy || loading} onClick={onClose}>Đóng</button></div>
     {error && <p role="alert" className="inline-error">{error}</p>}
     <div className="story-fields story-editor-fields">
       <label>Tên chương<input value={title} maxLength={120} onChange={event => setTitle(event.target.value)} /></label>
@@ -119,7 +119,7 @@ export default function StoryChapterEditor({ chapter, projectLang, targetLang, o
       <textarea className="story-text" value={text} onChange={event => { if (event.target.value.includes('\0')) { setError('Nội dung chứa ký tự không hợp lệ.'); return; } setText(event.target.value); }}
         maxLength={1_000_000} spellCheck={false} aria-label="Nội dung chương" readOnly={busy || loading} />
     </label>
-    <div className="story-actions story-editor-save"><button className="primary-button" disabled={busy || loading || !text.trim() || !title.trim() || !validChapterNumber(number)} onClick={() => void save()}>
+    <div className="story-actions story-editor-save"><button type="button" className="primary-button" disabled={busy || loading || !text.trim() || !title.trim() || !validChapterNumber(number)} onClick={() => void save()}>
       {busy || loading ? 'Đang xử lý…' : 'Lưu chương'}</button><span>{chapter.segmentCount} đoạn đã lưu</span></div>
   </section>
   {tab === 'translation' && targetLang && <StoryTranslation chapter={chapter} targetLang={targetLang} onApproved={setApproved} onEditing={setTranslationDirty} />}

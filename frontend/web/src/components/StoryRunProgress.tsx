@@ -59,17 +59,17 @@ export default function StoryRunProgress({ plan, progress, plans, voiceLabel, bu
         <span>{progress.percentComplete ?? 0}%</span></div>
       <progress value={progress.done} max={progress.total} aria-label="Tiến độ audio chương" />
       <div className="story-run-counts">{counts.filter(([, value]) => value > 0).map(([label, value]) => <span key={label}><strong>{value}</strong>{label}</span>)}</div>
-      {progress.status === 'RUNNING' && <button disabled={busy} onClick={onPause}>Tạm dừng</button>}
+      {progress.status === 'RUNNING' && <button type="button" disabled={busy} onClick={onPause}>Tạm dừng</button>}
       {progress.status === 'PAUSING' && <p role="status">Đang chờ lượt đã được cấp hoàn tất; chưa hủy job đang chạy.</p>}
       {progress.recoveryReason && <p role="status">{recoveryName[progress.recoveryReason] || progress.recoveryReason}</p>}
       {['PAUSED', 'BLOCKED_QUOTA', 'NEEDS_ATTENTION'].includes(progress.status) && progress.uncertain === 0 &&
         (progress.queued + progress.blockedQuota + progress.submitted + progress.processing + progress.claimed > 0) &&
-        <button disabled={busy} onClick={onResume}>Tiếp tục</button>}
+        <button type="button" disabled={busy} onClick={onResume}>Tiếp tục</button>}
       {progress.uncertain > 0 && <p role="status">Có đoạn chưa xác định được kết quả. Cần đối soát trước khi gửi lại.</p>}
       <ol className="story-audio-items">{progress.items.map(item => <li key={item.segmentId}>
         <div className="story-audio-item-heading"><strong>Đoạn {item.index + 1}</strong>
           <span className={`story-status story-status-${item.status.toLowerCase()}`}>{statusName[item.status] || item.status}</span></div>
-        {item.status === 'DONE' && item.audioUrl && item.jobId && <button className="story-listen-button" disabled={busy}
+        {item.status === 'DONE' && item.audioUrl && item.jobId && <button type="button" className="story-listen-button" disabled={busy}
           aria-label={`${currentId === item.jobId && playing ? 'Tạm dừng' : 'Nghe'} đoạn ${item.index + 1}`}
           aria-pressed={currentId === item.jobId && playing} onClick={() => onPlay(item.index)}>
           <Icon name={currentId === item.jobId && playing ? 'pause' : 'play'} size={17} />
@@ -79,13 +79,13 @@ export default function StoryRunProgress({ plan, progress, plans, voiceLabel, bu
         {item.status === 'FAILED' && item.retryable && <div>
           <small>{item.errorCode || 'Lỗi tạm thời'} · lần thử {item.attemptCount || 1}/{progress.maxAttempts || 3}
             {item.nextRetryAt ? ` · thử lại sau ${planDate(new Date(item.nextRetryAt * 1000).toISOString())}` : ''}</small>
-          <button disabled={busy || (item.nextRetryAt || 0) * 1000 > now ||
+          <button type="button" disabled={busy || (item.nextRetryAt || 0) * 1000 > now ||
             (item.attemptCount || 0) >= (progress.maxAttempts || 3)} onClick={() => onRetry(item.segmentId)}>Thử lại đoạn này</button>
         </div>}
       </li>)}</ol>
     {(progress.nextCursor || hasCursor) && <div className="story-audio-pagination">
-      {progress.nextCursor && <button disabled={busy} onClick={onNext}>Xem đoạn tiếp</button>}
-      {hasCursor && <button disabled={busy} onClick={onTop}>Về đầu</button>}
+      {progress.nextCursor && <button type="button" disabled={busy} onClick={onNext}>Xem đoạn tiếp</button>}
+      {hasCursor && <button type="button" disabled={busy} onClick={onTop}>Về đầu</button>}
     </div>}
     </div>
   </div>;

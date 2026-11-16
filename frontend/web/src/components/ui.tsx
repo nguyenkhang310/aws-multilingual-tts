@@ -1,15 +1,15 @@
-import {
-  Slider as LiquidSlider,
-  type SliderProps,
-} from "glisse";
+import { Slider as LiquidSlider, type SliderProps as LiquidSliderProps } from "glisse";
 import {
   memo,
   useCallback,
   useEffect,
   useRef,
+  useState,
   useId,
   type CSSProperties,
   type ButtonHTMLAttributes,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import PreferenceSwitch from "./PreferenceSwitch";
@@ -24,6 +24,7 @@ import Checkmark from "framework7-icons/react/esm/Checkmark.js";
 import ChevronDown from "framework7-icons/react/esm/ChevronDown.js";
 import Clock from "framework7-icons/react/esm/Clock.js";
 import DocText from "framework7-icons/react/esm/DocText.js";
+import DocOnDoc from "framework7-icons/react/esm/DocOnDoc.js";
 import ExclamationmarkTriangleFill from "framework7-icons/react/esm/ExclamationmarkTriangleFill.js";
 import ForwardEndFill from "framework7-icons/react/esm/ForwardEndFill.js";
 import GearAltFill from "framework7-icons/react/esm/GearAltFill.js";
@@ -61,6 +62,7 @@ const icons: Record<string, typeof Waveform> = {
   clock: Clock,
   download: ArrowDownToLine,
   file: DocText,
+  copy: DocOnDoc,
   headphones: Headphones,
   layers: LayersAltFill,
   menu: LineHorizontal3,
@@ -90,12 +92,47 @@ export function Button({ type = "button", ...props }: ButtonHTMLAttributes<HTMLB
   return <button type={type} {...props} />;
 }
 
+type SliderProps = LiquidSliderProps & {
+  onValueCommit?: (value: number) => void;
+  onGestureCancel?: () => void;
+};
 const StableSlider = memo(LiquidSlider);
-export function Slider({ onValueChange, ...props }: SliderProps) {
-  const handler = useRef(onValueChange);
-  handler.current = onValueChange;
-  const update = useCallback((value: number) => handler.current?.(value), []);
-  return <StableSlider {...props} onValueChange={update} />;
+export function Slider({ onValueChange, onValueCommit, onGestureCancel, step = 1, min = 0, max = 100, ...props }: SliderProps) {
+  const pointer = useRef<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const latest = useRef({ onValueChange, onValueCommit, onGestureCancel, step, min, max });
+  latest.current = { onValueChange, onValueCommit, onGestureCancel, step, min, max };
+  const update = useCallback((value: number) => {
+    const next = Number(value.toFixed(6));
+    latest.current.onValueChange?.(next);
+    if (pointer.current === null) latest.current.onValueCommit?.(next);
+  }, []);
+  const cancel = useCallback(() => {
+    if (pointer.current === null) return;
+    pointer.current = null; setDragging(false); latest.current.onGestureCancel?.();
+  }, []);
+  const start = useCallback((event: ReactPointerEvent<HTMLInputElement>) => {
+    if (event.currentTarget.disabled || event.button !== 0) return;
+    pointer.current = event.pointerId; setDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, []);
+  const finish = useCallback((event: ReactPointerEvent<HTMLInputElement>) => {
+    if (pointer.current !== event.pointerId) return;
+    pointer.current = null; setDragging(false);
+    latest.current.onValueCommit?.(event.currentTarget.valueAsNumber);
+  }, []);
+  const key = useCallback((event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const { min, max, step } = latest.current;
+    const move: Record<string, number> = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -10, PageUp: 10 };
+    if (!(event.key in move) && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    update(event.key === 'Home' ? min : event.key === 'End' ? max :
+      Math.max(min, Math.min(max, event.currentTarget.valueAsNumber + move[event.key] * step)));
+  }, [update]);
+  return <StableSlider {...props} min={min} max={max} step={Math.min(step, .001)} onValueChange={update}
+    data-dragging={dragging || undefined} onPointerDown={start} onPointerUp={finish}
+    onLostPointerCapture={cancel} onPointerCancel={cancel} onBlur={cancel} onKeyDown={key} />;
 }
 
 export function Icon({

@@ -125,7 +125,7 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
       {detected && <small role="status">{detected.status === 'detected'
         ? `Dự đoán: ${languageNames[detected.language || ''] || detected.language}. Hãy xác nhận.`
         : 'Chưa nhận diện chắc chắn. Hãy chọn ngôn ngữ thủ công.'}</small>}
-      {!confirmed && <button className="secondary-button" disabled={!draftLang || busy} onClick={() => setConfirmed(true)}>Xác nhận ngôn ngữ</button>}
+      {!confirmed && <button type="button" className="secondary-button" disabled={!draftLang || busy} onClick={() => setConfirmed(true)}>Xác nhận ngôn ngữ</button>}
     </div>}
     {!!drafts.length && <div className="story-import-drafts">{drafts.map((draft, index) => <details className="story-draft" open={drafts.length === 1} key={`${draft.name}-${index}`}>
       <summary><strong>Chương {String(draft.number).padStart(2, '0')} · {draft.title || 'Chưa đặt tên'}</strong></summary>
@@ -142,7 +142,7 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
       </div>
     </details>)}</div>}
     {invalid && <p role="alert" className="inline-error">Nhập tên chương, số nguyên 1–100.000 và thứ tự 0–100.000.</p>}
-    {!!drafts.length && <button className="primary-button" disabled={busy || !confirmed || invalid}
+    {!!drafts.length && <button type="button" className="primary-button" disabled={busy || !confirmed || invalid}
       onClick={() => void saveAll()}>{busy ? 'Đang lưu…' : `Lưu ${drafts.length} chương`}</button>}
   </section>;
 }

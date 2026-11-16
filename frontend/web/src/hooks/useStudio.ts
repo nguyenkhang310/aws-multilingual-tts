@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { api, DEMO } from "../lib/api";
+import { api, DEMO, getDemoToken } from "../lib/api";
 import { extractDocument } from "../lib/document";
 import { DEFAULT_SPEED, readStored, samples, storeValue, validateInput } from "../lib/data";
 import type { HistoryItem, HistoryResponse, Job, Language, SynthesizeInput, TextCorrection } from "../lib/types";
@@ -29,7 +29,7 @@ export function useSession(notify: Notify) {
   const [catalog, setLanguages] = useState<Language[]>([]);
   const [selectedProvider, setProvider] = useState('');
   const provider = catalog.some(l => l.provider === selectedProvider) ? selectedProvider : catalog[0]?.provider ?? '';
-  const languages = useMemo(() => catalog.filter(l => provider === 'gemini' ? l.provider === 'gemini' : l.provider !== 'gemini'), [catalog, provider]);
+  const languages = useMemo(() => catalog.filter(l => DEMO || l.provider === provider), [catalog, provider]);
   const providers = useMemo(() => providerOptions(catalog), [catalog]);
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [voiceError, setVoiceError] = useState("");
@@ -55,13 +55,14 @@ export function useSession(notify: Notify) {
   }, []);
 
   const loadVoices = useCallback(async (background = false) => {
+    const token = getDemoToken();
     if (background && voicesLoading.current) return false;
     const requestId = ++voiceRequest.current;
     voicesLoading.current = true;
     if (!background) { setLoadingVoices(true); setVoiceError(""); }
     try {
       const result = await api.voices();
-      if (!mounted.current || requestId !== voiceRequest.current) return false;
+      if (!mounted.current || requestId !== voiceRequest.current || token !== getDemoToken()) return false;
       setLanguages(result);
       connected.current = !!preferredLanguage(result);
       setVoiceError(connected.current ? "" : "Chưa có giọng đọc khả dụng.");
@@ -81,13 +82,14 @@ export function useSession(notify: Notify) {
   }, []);
 
   const loadHistory = useCallback(async (cursor?: string, background = false) => {
+    const token = getDemoToken();
     if (background && historyLoading.current) return;
     const requestId = ++historyRequest.current;
     historyLoading.current = true;
     if (!background) { setLoadingHistory(true); setHistoryError(""); }
     try {
       const result = await api.history(cursor);
-      if (!mounted.current || requestId !== historyRequest.current) return;
+      if (!mounted.current || requestId !== historyRequest.current || token !== getDemoToken()) return;
       historyPage.current = mergeHistoryPage(historyPage.current, result, !!cursor, background);
       setHistory(historyPage.current.items);
       setNextCursor(historyPage.current.nextCursor);
@@ -130,6 +132,7 @@ export function useSession(notify: Notify) {
   }, [loadHistory]);
 
   async function openRecording(item: HistoryItem) {
+    const token = getDemoToken();
     const requestId = ++recordingRequest.current;
     if (item.status === "FAILED") {
       notify("Bản thu bị lỗi. Vui lòng tạo lại.", true);
@@ -137,7 +140,7 @@ export function useSession(notify: Notify) {
     }
     try {
       const fresh = DEMO ? item : { ...item, ...(await api.job(item.jobId)) };
-      if (!mounted.current || requestId !== recordingRequest.current) return;
+      if (!mounted.current || requestId !== recordingRequest.current || token !== getDemoToken()) return;
       if (fresh.status !== "DONE") {
         notify("Bản thu đang được xử lý. Vui lòng thử lại sau.");
         void loadHistory();
@@ -152,7 +155,9 @@ export function useSession(notify: Notify) {
   }
 
   async function deleteRecording(item: HistoryItem) {
+    const token = getDemoToken();
     await api.remove(item.jobId);
+    if (!mounted.current || token !== getDemoToken()) return;
     for (const [key, value] of completed.current) if (value.jobId === item.jobId) completed.current.delete(key);
     recordingRequest.current++;
     historyRequest.current++;
@@ -164,7 +169,15 @@ export function useSession(notify: Notify) {
     notify("Đã xóa bản thu.");
   }
 
+  async function reconnect() {
+    voiceRequest.current++; historyRequest.current++; recordingRequest.current++;
+    completed.current.clear(); historyPage.current = { items: [], nextCursor: null };
+    setHistory([]); setNextCursor(null); setCurrentAudio(null);
+    await Promise.all([loadVoices(), loadHistory()]);
+  }
+
   return {
+    reconnect,
     provider, providers, setProvider, allLanguages: catalog,
     languages,
     loadingVoices,
@@ -190,6 +203,9 @@ export function useEditor(
   { draftKey = DRAFT_KEYS.speech, translateTo = null }: EditorOptions = {},
 ) {
   const { languages, completed, showRecording } = session;
+  const sourceLanguages = useMemo(() => translateTo
+    ? session.allLanguages.filter((item, index, list) => list.findIndex(other => other.lang === item.lang) === index)
+    : languages, [languages, session.allLanguages, translateTo]);
   const languagesRef = useRef(languages);
   useLayoutEffect(() => { languagesRef.current = languages; }, [languages]);
   const [text, setText] = useState(() => {
@@ -205,7 +221,6 @@ export function useEditor(
   const [selectedStyle, setStyle] = useState('neutral');
   const [styleIntensity, setStyleIntensity] = useState(1);
   const [checkSpelling, setCheckSpelling] = useState(false);
-  const [correctionNotice, setCorrectionNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
@@ -233,7 +248,6 @@ export function useEditor(
   const [error, setError] = useState("");
   const [job, setJob] = useState<Job | null>(null);
   const [translationResult, setTranslationResult] = useState<{ jobId: string } | null>(null);
-  const [draftSaved, setDraftSaved] = useState(false);
   const mounted = useRef(true);
   const submitLock = useRef(false);
   const languageLock = useRef(false);
@@ -242,7 +256,6 @@ export function useEditor(
   const completionKey = (index: number, input: SynthesizeInput) => JSON.stringify([draftKey, index, input]);
   const previewKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([index, source, sourceLang, translateTo]);
 
-  useEffect(() => { setCorrectionNotice(''); }, [checkSpelling]);
 
   useEffect(() => {
     mounted.current = true;
@@ -254,14 +267,14 @@ export function useEditor(
     };
   }, []);
   useEffect(() => {
-    setDraftSaved(false);
-    const timer = window.setTimeout(() => setDraftSaved(storeValue(draftKey, text)), 500);
+    const timer = window.setTimeout(() => storeValue(draftKey, text), 500);
     return () => window.clearTimeout(timer);
   }, [draftKey, text]);
   useEffect(() => {
+    if (translateTo) return;
     const initial = preferredLanguage(languages);
     if (initial) setLang((previous) => (languages.some((l) => l.lang === previous && l.voices.length) ? previous : initial.lang));
-  }, [languages]);
+  }, [languages, translateTo]);
   useEffect(() => {
     if (!autoLanguage) { setLanguageDetection(null); return; }
     if (!text.trim()) { setLanguageDetection(null); return; }
@@ -271,7 +284,7 @@ export function useEditor(
       try { found = await detectLanguage(text); } catch { return; }
       if (!active) return;
       setLanguageDetection(found);
-      if (found.status !== 'detected' || !found.language || !languages.some(item => item.lang === found.language && item.voices.length)) return;
+      if (found.status !== 'detected' || !found.language || !sourceLanguages.some(item => item.lang === found.language)) return;
       if (found.language !== lang) {
         if (!translateTo) {
           setVoice(previous => languages.find(item => item.lang === found.language)?.voices.some(item => item.id === previous)
@@ -282,7 +295,7 @@ export function useEditor(
       }
     }, 320);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [text, autoLanguage, languages, lang, translateTo]);
+  }, [text, autoLanguage, languages, sourceLanguages, lang, translateTo]);
 
   const language = languages.find((l) => l.lang === (translateTo || lang));
   const selectedVoice = language?.voices.find(v => v.id === voice);
@@ -295,6 +308,7 @@ export function useEditor(
       language?.voices.some((v) => v.id === previous) ? previous : voiceNeedsSelection ? '' : language?.voices[0]?.id || "",
     );
   }, [language, voiceNeedsSelection]);
+  useEffect(() => { setStyle('neutral'); setStyleIntensity(1); }, [language?.provider, voice]);
 
   function selectLanguage(value: string) {
     revision.current++;
@@ -316,7 +330,6 @@ export function useEditor(
     cancelReview();
     setText(value);
     setImportWarning('');
-    setCorrectionNotice('');
     if (!value.trim()) setFileName("");
     setError("");
   }
@@ -326,8 +339,7 @@ export function useEditor(
   }
   function chooseVoice(code: string, id: string) {
     revision.current++;
-    setAutoLanguage(false);
-    setLang(code);
+    if (!translateTo) { setAutoLanguage(false); setLang(code); }
     setVoice(id);
     setVoiceNeedsSelection(false);
     setError("");
@@ -432,28 +444,26 @@ export function useEditor(
     const correctionKey = JSON.stringify([input.lang, input.text]);
     const shouldCheck = check && !checkedTexts.current.has(correctionKey);
     setChecking(shouldCheck);
-    setCorrectionNotice('');
     setError("");
     setJob(null);
     const currentRevision = revision.current;
+    let correctionMessage = '';
     try {
       if (shouldCheck) {
         const waiting = skippableCorrection(signal => api.correct(input.text, input.lang, signal));
         correctionWait.current = waiting;
         const correctionStarted = performance.now();
         let correction: TextCorrection | null = null;
-        let failed = false;
+
         try { correction = await waiting.result; }
-        catch { failed = true; checkedTexts.current.add(correctionKey); if (mounted.current && currentRevision === revision.current) setCorrectionNotice(correctionFailureNotice()); }
+        catch { checkedTexts.current.add(correctionKey); correctionMessage = correctionFailureNotice(); }
         finally {
           correctionWait.current = null;
           ttsTiming('correction_api', correctionStarted, language?.provider ?? '', correction?.status ?? 'SKIPPED');
         }
         if (!mounted.current || currentRevision !== revision.current) return;
         setChecking(false);
-        if (correction?.status === 'skipped') { checkedTexts.current.add(correctionKey); setCorrectionNotice(correctionFailureNotice(correction.reason)); }
-        else if (correction?.status === 'checked' && !correction.hasTypos) setCorrectionNotice('Gemini không phát hiện lỗi đánh máy.');
-        else if (!correction && !failed) setCorrectionNotice('Đã bỏ qua kiểm tra chính tả. Bản thu dùng nguyên văn nội dung đã chọn.');
+        if (correction?.status === 'skipped') { checkedTexts.current.add(correctionKey); correctionMessage = correctionFailureNotice(correction.reason); }
         if (correction?.status === "checked" && correction.hasTypos && correction.correctedText !== input.text) {
           const pending = { input, correction, documentText: text, partIndex: index, partLimit, approvalKey };
           reviewRef.current = pending;
@@ -508,7 +518,7 @@ export function useEditor(
       if (translateTo) setTranslationResult({ jobId: recording.jobId });
       if (completed.current.size > 200) completed.current.delete(completed.current.keys().next().value!);
       showRecording(recording);
-      notify("Bản thu đã sẵn sàng. Nhấn phát để nghe.");
+      notify(correctionMessage || "Bản thu đã sẵn sàng. Nhấn phát để nghe.");
       return true;
     } catch (error) {
       if (mounted.current) {
@@ -575,7 +585,7 @@ export function useEditor(
     if (found.status !== 'detected' || !found.language) {
       setError('Chưa xác định rõ ngôn ngữ. Hãy chọn thủ công.'); return null;
     }
-    if (!languages.some(item => item.lang === found.language && item.voices.length)) {
+    if (!sourceLanguages.some(item => item.lang === found.language)) {
       setError('Nguồn giọng hiện tại chưa hỗ trợ ngôn ngữ dự đoán. Hãy chọn thủ công.'); return null;
     }
     if (lang !== found.language) {
@@ -642,6 +652,7 @@ export function useEditor(
     useSample,
     editorRef,
     language,
+    sourceLanguages,
     lang,
     setLang: selectLanguage,
     autoLanguage,
@@ -652,7 +663,6 @@ export function useEditor(
     setSpeed,
     style, setStyle, styles, styleIntensity, setStyleIntensity,
     checkSpelling, setCheckSpelling,
-    correctionNotice,
     busy: busy || !!batch,
     batch,
     generateAll,
@@ -674,7 +684,6 @@ export function useEditor(
     error,
     job,
     translationResult,
-    draftSaved,
     generate,
     importFile,
   };

@@ -44,7 +44,7 @@ export default function Sidebar({ page, collapsed, count, onToggle, onNavigate, 
   return <aside id={sidebarId} className={`sidebar ${drawer ? "drawer-sidebar" : ""}`} aria-label="Điều hướng chính"
     onPointerOver={showHint} onFocusCapture={showHint}
     onPointerLeave={() => setHint(null)} onBlurCapture={() => setHint(null)}>
-    <div className="sidebar-glass" aria-hidden="true" />
+    <div className="sidebar-glass control-glass" aria-hidden="true" />
     <Button className={drawer ? "icon-button drawer-close" : "sidebar-toggle"} aria-label={drawer ? "Đóng menu điều hướng" : collapsed ? "Hiện thanh bên" : "Thu gọn thanh bên"}
       aria-expanded={drawer ? undefined : !collapsed} aria-controls={sidebarId}
       onClick={() => { setHint(null); onToggle(); }}>

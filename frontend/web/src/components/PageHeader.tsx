@@ -1,9 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button, Icon } from "./ui";
 
-export default function PageHeader({ onMenu, onExport, children }: {
+export default function PageHeader({ onMenu, children }: {
   onMenu: () => void;
-  onExport: () => void;
   children: ReactNode;
 }) {
   const [hour, setHour] = useState(() => new Date().getHours());
@@ -23,14 +22,11 @@ export default function PageHeader({ onMenu, onExport, children }: {
       <img className="header-logo" src="/brand/hcmute.png" alt="HCMUTE" />
       <div className="header-copy">
         <p className="header-greeting"><span>{greeting},</span> <strong>Nhóm 5</strong></p>
-        <p className="header-subtitle">Quản lý nội dung và bản thu của bạn.</p>
+        <p className="header-subtitle">Hệ thống giọng nói đa ngôn ngữ</p>
       </div>
     </div>
     <div className="header-actions">
       {children}
-      <Button className="secondary-button header-utility" aria-label="Xuất báo cáo" onClick={onExport} title="Xuất các bản thu đã tải ra CSV">
-        <Icon name="download" size={17} /><span>Xuất báo cáo</span>
-      </Button>
       <span className="header-avatar" role="img" aria-label="Điện toán đám mây"><Icon name="cloud" size={24} /></span>
     </div>
   </header>;

@@ -130,11 +130,11 @@ export default function Audiobooks() {
   }
   const filtered = projects.filter(item => item.title.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')));
   return <div className="story-layout" aria-busy={busy || loading}>
-    {error && <div role="alert" className="inline-error">{error}<button disabled={busy} onClick={() => void run(() => project ? reloadChapters(project.projectId) : reloadProjects())}>Tải lại</button></div>}
+    {error && <div role="alert" className="inline-error">{error}<button type="button" disabled={busy} onClick={() => void run(() => project ? reloadChapters(project.projectId) : reloadProjects())}>Tải lại</button></div>}
     {!project ? <>
       <header className="story-library-header">
         <div><h2>Thư viện truyện</h2><span>{projects.length} truyện</span></div>
-        <button className="primary-button" disabled={busy} onClick={() => setPanel('new')}><Icon name="plus" size={18} />Thêm truyện</button>
+        <button type="button" className="primary-button" disabled={busy} onClick={() => setPanel('new')}><Icon name="plus" size={18} />Thêm truyện</button>
       </header>
       <div className="story-library-tools"><label className="story-search"><Icon name="search" size={18} />
         <input aria-label="Tìm truyện" placeholder="Tìm truyện" value={query} onChange={event => setQuery(event.target.value)} /></label>
@@ -147,13 +147,13 @@ export default function Audiobooks() {
         }} />
       </div>
       {loading ? <p role="status" className="story-note">Đang tải thư viện…</p> : filtered.length ? <ul className="story-bookshelf">{filtered.map(item => <li key={item.projectId}>
-        <button className="story-book" disabled={busy} onClick={() => void run(() => open(item))}>
+        <button type="button" className="story-book" disabled={busy} onClick={() => void run(() => open(item))}>
           {cover(item)}<strong>{item.title}</strong><span>{item.chapterCount} chương · {language(item.sourceLang)}</span>
         </button></li>)}</ul> : <div className="story-empty"><Icon name="book" size={42} /><h3>{query ? 'Không tìm thấy truyện' : 'Chưa có truyện'}</h3>
-          {!query && <button onClick={() => setPanel('new')}>Thêm truyện đầu tiên</button>}</div>}
+          {!query && <button type="button" onClick={() => setPanel('new')}>Thêm truyện đầu tiên</button>}</div>}
       <small className="story-note">Lưu bản sao trước khi kết thúc Lab.</small>
     </> : chapter ? <>
-      <div className="story-detail-nav"><button disabled={chapterBusy} onClick={() => selectChapter(null)}><Icon name="chevron" size={15} />{project.title}</button>
+      <div className="story-detail-nav"><button type="button" disabled={chapterBusy} onClick={() => selectChapter(null)}><Icon name="chevron" size={15} />{project.title}</button>
         <span>Chương {chapter.chapterNumber}</span></div>
       <StoryChapterEditor key={chapter.chapterId} chapter={chapter} projectLang={project.sourceLang} targetLang={project.targetLang}
         onDirty={setChapterDirty} onBusy={setChapterBusy} onClose={() => selectChapter(null)}
@@ -161,19 +161,19 @@ export default function Audiobooks() {
           await storyApi.deleteChapter(chapter); selectChapter(null, true); await reloadChapters(project.projectId); })}
         onSaved={updated => { setChapter(updated); void reloadChapters(project.projectId).catch(err => setError(message(err))); }} />
     </> : <>
-      <div className="story-detail-nav"><button onClick={leaveProject}><Icon name="chevron" size={15} />Thư viện truyện</button>
-        <button aria-label="Tùy chọn truyện" onClick={() => setPanel('settings')}><Icon name="settings" size={19} /></button></div>
+      <div className="story-detail-nav"><button type="button" onClick={leaveProject}><Icon name="chevron" size={15} />Thư viện truyện</button>
+        <button type="button" aria-label="Tùy chọn truyện" onClick={() => setPanel('settings')}><Icon name="settings" size={19} /></button></div>
       <header className="story-book-heading">{cover(project, true)}<div>
         <h2>{project.title}</h2>
         <p>{chapters.length} chương · {language(project.sourceLang)}</p>
-        <div className="story-actions"><button className="primary-button" disabled={busy} onClick={() => setPanel('import')}><Icon name="upload" size={18} />Nhập chương</button>
-          <button className="secondary-button" disabled={busy || project.sourceLang === 'und'} onClick={() => {
+        <div className="story-actions"><button type="button" className="primary-button" disabled={busy} onClick={() => setPanel('import')}><Icon name="upload" size={18} />Nhập chương</button>
+          <button type="button" className="secondary-button" disabled={busy || project.sourceLang === 'und'} onClick={() => {
             setChapterTitle(''); setChapterNumber(Math.max(0, ...chapters.map(item => item.chapterNumber)) + 1); setPanel('chapter');
           }}>Viết chương</button></div>
       </div></header>
-      <div className="story-section-heading"><h3>Danh sách chương</h3><button aria-label="Làm mới chương" disabled={busy} onClick={() => void run(() => reloadChapters(project.projectId))}><Icon name="repeat" size={18} /></button></div>
+      <div className="story-section-heading"><h3>Danh sách chương</h3><button type="button" aria-label="Làm mới chương" disabled={busy} onClick={() => void run(() => reloadChapters(project.projectId))}><Icon name="repeat" size={18} /></button></div>
       {chapters.length ? <ol className="story-chapters">{chapters.map(item => <li key={item.chapterId}>
-        <button onClick={() => selectChapter(item)}><span className="story-chapter-number">{String(item.chapterNumber).padStart(2, '0')}</span>
+        <button type="button" onClick={() => selectChapter(item)}><span className="story-chapter-number">{String(item.chapterNumber).padStart(2, '0')}</span>
           <span className="story-chapter-title"><strong>{item.title}</strong><small>{item.textLength ? `${item.textLength.toLocaleString('vi-VN')} ký tự` : 'Chưa có nội dung'}</small></span>
           <Icon name="chevron" size={18} /></button>
       </li>)}</ol> : <div className="story-empty"><Icon name="book" size={34} /><h3>Chưa có chương</h3></div>}
@@ -214,13 +214,13 @@ export default function Audiobooks() {
       {project && panel === 'translate' && <StoryTranslationBatch project={project} chapters={chapters} onBusy={setDialogBusy} />}
       {project && panel === 'settings' && <div className="story-form">
         <div className="story-cover-detail">{cover(project)}<FilePickerButton label="Đổi ảnh bìa" accept="image/jpeg,image/png" disabled={busy} onFiles={files => { if (files[0]) uploadCover(project, files[0]); }} /></div>
-        {project.cover && <button disabled={busy} onClick={() => void run(async () => { setProject(await storyApi.deleteCover(project)); await reloadProjects(); })}>Xóa ảnh bìa</button>}
-        <button disabled={busy} onClick={() => void run(async () => { const name = window.prompt('Tên truyện mới', project.title);
+        {project.cover && <button type="button" disabled={busy} onClick={() => void run(async () => { setProject(await storyApi.deleteCover(project)); await reloadProjects(); })}>Xóa ảnh bìa</button>}
+        <button type="button" disabled={busy} onClick={() => void run(async () => { const name = window.prompt('Tên truyện mới', project.title);
           if (!name?.trim() || name === project.title) return; setProject(await storyApi.renameProject(project, name.trim())); await reloadProjects(); })}>Đổi tên truyện</button>
-        <button onClick={() => setPanel('translate')}>Dịch nhiều chương</button><button onClick={() => setPanel('glossary')}>Tên riêng và thuật ngữ</button>
-        <button disabled={busy} onClick={() => void run(async () => { exported(await storyApi.exportProject(project), `audiobook-${project.projectId}.json`); })}>Xuất bản sao lưu</button>
+        <button type="button" onClick={() => setPanel('translate')}>Dịch nhiều chương</button><button type="button" onClick={() => setPanel('glossary')}>Tên riêng và thuật ngữ</button>
+        <button type="button" disabled={busy} onClick={() => void run(async () => { exported(await storyApi.exportProject(project), `audiobook-${project.projectId}.json`); })}>Xuất bản sao lưu</button>
         <small>Bản sao gồm nội dung và bản dịch; không gồm ảnh bìa hoặc MP3.</small>
-        <button className="story-danger" disabled={busy} onClick={() => void run(async () => { if (!window.confirm(`Xóa truyện “${project.title}”?`)) return;
+        <button type="button" className="story-danger" disabled={busy} onClick={() => void run(async () => { if (!window.confirm(`Xóa truyện “${project.title}”?`)) return;
           await storyApi.deleteProject(project); leaveProject(); setPanel(null); selectChapter(null, true); await reloadProjects(); })}>Xóa truyện</button>
       </div>}
     </div></Modal>}

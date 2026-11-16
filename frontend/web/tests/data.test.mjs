@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { environment, recording } from "./environment.mjs";
+import { environment } from "./environment.mjs";
 
 test("API frontend: nội dung sửa và phản hồi không hợp lệ", async (suite) => {
   const env = await environment();
@@ -158,17 +158,5 @@ test("Nhập tài liệu: nội dung và giới hạn", async (suite) => {
       controller.abort();
       await assert.rejects(pending, /Đã hủy/);
     });
-  } finally { await env.close(); }
-});
-
-test("Báo cáo CSV giữ tiếng Việt, dấu câu và không chứa link nghe tạm thời", async () => {
-  const env = await environment();
-  const { historyCsv } = await env.load("lib/data.ts");
-  try {
-    const csv = historyCsv([{ ...recording(), text: '=SUM(1,2)\n"Tiếng Việt"' }]);
-    assert.equal(csv.charCodeAt(0), 0xFEFF);
-    assert.match(csv, /"'=SUM\(1,2\)\n""Tiếng Việt"""/);
-    assert.match(csv, /"Mã bản thu","Nội dung"/);
-    assert.doesNotMatch(csv, /https:\/\/audio\.test/);
   } finally { await env.close(); }
 });

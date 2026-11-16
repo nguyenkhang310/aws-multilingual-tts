@@ -102,7 +102,7 @@ Các file thật được Git ignore; chỉ `.env.example` được đưa lên G
 Chỉ khi muốn thử Gemini, bổ sung các dòng sau vào env **backend**, không thay key Azure:
 
 ```dotenv
-GEMINI_API_KEY=KEY_GEMINI_CUA_BAN
+GEMINI_API_KEY=KEY_GEMINI_1,KEY_GEMINI_2
 GEMINI_MODEL=MA_MODEL_TAI_KHOAN_HO_TRO
 GEMINI_TYPO_ENABLED=false
 GEMINI_TIMEOUT_SECONDS=8
@@ -110,6 +110,8 @@ GEMINI_TRANSLATION_ENABLED=true
 ```
 
 Mã model phải là ID Gemini thực được key hỗ trợ; không dùng nguyên placeholder. Source M5 có mặc định model trong SAM nhưng chưa được nghiệm thu live. `GEMINI_TYPO_ENABLED=true` bật API sửa lỗi; người dùng còn phải bật **Kiểm tra chính tả bằng AI** trong màn Tạo giọng đọc nếu muốn gọi API đó. `GEMINI_TIMEOUT_SECONDS` nhận 1–8 giây; hết giờ giữ bản gốc. Khởi động lại `npm run dev` sau khi sửa env. Runtime dùng lại handler/counter M5 và mock SSM; không cần chạy thêm bridge/cổng thứ tư. Gemini và Azure đều dùng quota thật khi người dùng chủ động gọi chức năng tương ứng.
+
+**Chỉ áp dụng cho dev local:** `GEMINI_API_KEY` nhận một key hoặc tối đa năm key, phân cách bằng dấu phẩy, ví dụ `GEMINI_API_KEY=KEY_1,KEY_2`. Khi Gemini trả HTTP 429, runtime local thử key kế tiếp theo thứ tự đã nhập; key đơn vẫn chạy như trước. Chỉ xoay khi provider đã từ chối request bằng 429; lỗi xác thực, model, mạng hoặc timeout không tự chuyển key. Nhiều key cùng Google Cloud project thường dùng chung quota. Khởi động lại `npm run dev` sau khi sửa env. **AWS/Sandbox không thay đổi:** Lambda tiếp tục dùng một key trong SSM SecureString, như cấu hình hiện tại. Giữ key kín, không đặt trong frontend hoặc commit `.env.local`.
 
 ### Lỗi HTTPS, DNS và kết nối
 
@@ -215,6 +217,35 @@ Khởi động lại Metro (`npm --prefix frontend/app start -- --clear`), quét
 Job/MP3/quota/idempotency local nằm trong RAM, **mất khi tắt API**; catalog và key env vẫn ở máy. Tránh tắt khi job đang xử lý rồi gửi lại liên tục. Key/quota Azure không reset theo runtime local.
 
 Local giữ bảy API nền, phần mở rộng `/text/translate` và `/documents/recognize` của M5; thêm `/health` và `/media/{id}` chỉ trong dev server. Link media được ký, có hạn và hỗ trợ HTTP Range để tua; không dùng presigned URL AWS giả. Worker chạy tuần tự, thử lại tối đa một lần; đây không phải mô phỏng đầy đủ Lambda/IAM/OAC hoặc bằng chứng AWS đã đạt.
+
+### VieNeu nhại giọng trên local
+
+VieNeu chỉ chạy khi bật tường minh. Mô hình và WAV tham chiếu phải nằm trong `voice02-local/` ở gốc repo; không đưa vào Git. Cài thư viện vào **cùng `.venv` mà `npm run dev` dùng cho API**:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install vieneu==3.8.4 --no-deps
+.\.venv\Scripts\python.exe -m pip install -r backend/m2-trung-khang/scripts/voice_clone_requirements.txt
+```
+
+Nếu model chưa tải, chuẩn bị đúng revision đã ghim (khoảng 312 MiB):
+
+```powershell
+.\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/prepare_voice_clone_model.py --output-dir voice02-local\model
+```
+
+Trong `deployment/local/.env.local`, đặt:
+
+```dotenv
+VOICE_CLONE_ENABLED=true
+VOICE_CLONE_MODEL_DIR=voice02-local\model\hf-cache\hub\models--pnnbao-ump--VieNeu-TTS-v3-Turbo\snapshots\61b85e3d937fbbacb387714180e8182823512523
+VOICE_CLONE_CACHE_DIR=voice02-local\model\hf-cache
+```
+
+Chạy `npm run dev` tại gốc repo, nhập `DEMO_TOKEN` trong Cài đặt, chọn **VieNeu · Nhại giọng** và mở danh sách giọng để thêm WAV PCM 16-bit mono/stereo dài 3–8 giây, tối đa 2 MiB. Chọn hồ sơ mới lưu để tạo giọng. VieNeu chỉ đọc tiếng Việt trực tiếp; không dùng Azure/Gemini key, không dịch và không có sắc thái.
+
+Để so sánh, dùng cùng một câu ngắn: tạo bản đầu, nghe trong **Bản thu**, đổi từng điều chỉnh rồi tạo lại. Bản cũ được giữ để nghe lại. **Bám cách nói mẫu** dùng thông tin ngữ điệu WAV; **Lọc nhiễu mẫu** phù hợp khi WAV có tiếng nền; **Độ ổn định** tăng thì giảm biến thiên khi tạo. Đây là các núm thử nghiệm của model, không phải thước đo độ giống và không bảo đảm một hướng chỉnh nào làm giọng giống hơn. Muốn chạy trên điện thoại, giữ API chạy trên máy và dùng cùng Wi-Fi/QR Expo như phần trên.
+
+`voice02-local/` phải có sẵn trước khi bật cờ. Nếu đường dẫn model sai hoặc thiếu thư viện, hãy tắt `VOICE_CLONE_ENABLED` trong env và khởi động lại; các provider Azure/Gemini vẫn tách riêng.
 
 Ảnh bìa Audio Truyện trong local cũng ở Moto trong RAM. Dev server cấp URL upload/đọc local có chữ ký HMAC ngắn hạn thay cho URL S3, nên thử chọn/tải/đổi/xóa ảnh không gửi ảnh lên AWS. Local bridge kiểm token upload và giới hạn 5 MiB; API M3 vẫn kiểm lại bytes, MIME và pixel khi xác nhận. Dữ liệu/URL ảnh mất khi tắt server. Kiểm bằng `python -m unittest discover -s deployment/local -p 'test_*.py'` từ gốc repo với `.venv` đã cài requirements local.
 

@@ -36,7 +36,7 @@ function Player() {
           <View style={styles.artworkBrand}><Label size={10} maxScale={1.2} weight="600" style={{ color: isDark ? '#B4D3E6' : '#476C87', letterSpacing: 2 }}>HCMUTE | AWS</Label></View>
         </View>
         <View style={[styles.details, wide && { flex: 1 }]}>
-          <View style={{ gap: 8 }}><Label size={24} weight="600" lines={3} style={{ lineHeight: 32 }}>{current.text}</Label>
+          <View style={{ gap: 8 }}><Label size={24} weight="600" lines={3} style={{ lineHeight: 32 }}>{current.title || current.text}</Label>
             <Label size={14} muted lines={2}>{voiceName(languages, current.voice)} · {languageNames[current.lang] ?? current.lang}
               {current.resolvedStyle && current.resolvedStyle !== 'neutral' ? ` · ${expressionName(current.resolvedStyle)}` : ''}</Label>
             <Label size={12} muted>{date(current.createdAt)}{current.local ? ' · Giọng trên thiết bị' : ' · Bản thu MP3'}</Label></View>
@@ -53,7 +53,7 @@ function Player() {
               onPress={() => void toggle()} style={[styles.play, { backgroundColor: colors.blue }]}>
               {loading ? <ActivityIndicator color={colors.invert} /> : <Icon name={playing ? 'pause' : 'play'} color={colors.invert} size={29} />}</Pressable></Glass>
             <Circle name="forward" label="Bản thu tiếp theo" size={44} onPress={() => skip(1)} />
-            <Pressable accessibilityRole="button" accessibilityLabel="Mở danh sách bản thu" onPress={() => router.dismissTo('/library')} style={styles.smallControl}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Mở danh sách bản thu" onPress={() => router.dismissTo(current.storyChapterId ? '/audiobooks' : '/library')} style={styles.smallControl}>
               <Icon name="library" size={23} color={colors.secondary} /></Pressable>
           </View>
           <Action icon="file" onPress={() => setTextOpen(true)}>Xem nội dung</Action>
@@ -61,7 +61,7 @@ function Player() {
       </View>
     </PageScroll>
     <Sheet title="Nội dung bản thu" visible={textOpen} close={() => setTextOpen(false)}>
-      <Label size={18} style={{ lineHeight: 29 }}>{current.text}</Label>
+      <Label size={18} style={{ lineHeight: 29 }}>{current.title || current.text}</Label>
       <Action icon="copy" onPress={() => void Clipboard.setStringAsync(current.text).then(() => setNotice('Đã sao chép nội dung.')).catch(() => setNotice('Chưa sao chép được.'))}>Sao chép</Action>
       <Action primary onPress={() => { setTextOpen(false); setDraft(current.text); router.replace('/compose'); }}>Dùng lại nội dung</Action>
     </Sheet>

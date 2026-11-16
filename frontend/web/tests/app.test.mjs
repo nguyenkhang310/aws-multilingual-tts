@@ -43,6 +43,20 @@ test("Ứng dụng: điều hướng, sidebar, loading và modal", async (suite)
       await click(env.mount.querySelector('[aria-label="Hướng dẫn"]'));
       assert.equal(env.mount.querySelector("h1").textContent, "Hướng dẫn sử dụng");
     });
+    await suite.test("Back và đổi hash phải qua kiểm tra rời trang, bấm trang hiện tại giữ trạng thái", async () => {
+      const checks = [];
+      const guard = event => { checks.push(location.hash); event.preventDefault(); };
+      env.win.addEventListener('tts:before-navigate', guard);
+      await click(env.mount.querySelector('.sidebar a[href="#help"]'));
+      assert.equal(checks.length, 0, 'Không hỏi bỏ nội dung khi chọn lại trang hiện tại');
+      await act(async () => { location.hash = 'studio'; await settle(); });
+      assert.equal(env.mount.querySelector('h1').textContent, 'Hướng dẫn sử dụng');
+      assert.equal(location.hash, '#help', 'Hash trở lại trang đang giữ');
+      assert.equal(checks.length, 1);
+      env.win.removeEventListener('tts:before-navigate', guard);
+      await click(env.mount.querySelector('.sidebar a[href="#studio"]'));
+      assert.equal(env.mount.querySelector('h1').textContent, 'Tạo giọng đọc');
+    });
     await suite.test("chọn giao diện sáng/tối và lưu cùng tùy chọn cũ", async () => {
       await click(env.mount.querySelector('.sidebar a[href="#settings"]'));
       await click(env.mount.querySelector('input[name="theme"][value="dark"]'));

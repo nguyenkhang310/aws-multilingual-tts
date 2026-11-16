@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, DEMO } from '../lib/api';
 import type { Language } from '../lib/types';
 import type { StoryChapter, StoryPlan, StoryProgress } from '../../../shared/story';
@@ -6,6 +6,9 @@ import { storyBatchApi, type PlanInput } from '../lib/story-batch-api';
 import { languageNames } from '../../../shared/languages';
 import StoryRunProgress from '../components/StoryRunProgress';
 import StoryAudioSettings, { voiceName } from '../components/StoryAudioSettings';
+import { storyListeningQueue, storyQueuePages } from '../../../shared/story-playback';
+import { useStoryPlayback } from '../hooks/StoryPlayback';
+import { Icon } from '../components/ui';
 import { mergeStoryMp3 } from '../lib/story-merge';
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'Chưa hoàn tất thao tác.';
@@ -13,7 +16,9 @@ const message = (error: unknown) => error instanceof Error ? error.message : 'Ch
 export default function StoryAudio({ chapter, dirty, targetLang, approvedRevision }: {
   chapter: StoryChapter; dirty: boolean; targetLang?: string; approvedRevision?: string;
 }) {
-  const outputLang = targetLang || chapter.sourceLang;
+  const playback = useStoryPlayback();
+  const [reload, setReload] = useState(0);
+  const [ready, setReady] = useState(false);
   const [catalog, setCatalog] = useState<Language[]>([]);
   const [plans, setPlans] = useState<StoryPlan[]>([]);
   const [plan, setPlan] = useState<StoryPlan | null>(null);
@@ -24,18 +29,19 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
   const [speed, setSpeed] = useState(0.9);
   const [style, setStyle] = useState('neutral');
   const [intensity, setIntensity] = useState(1);
-  const [useApproved, setUseApproved] = useState(true);
+  const [readLang, setReadLang] = useState(chapter.sourceLang);
+  const [useApproved, setUseApproved] = useState(false);
+  const outputLang = useApproved && approvedRevision ? targetLang || chapter.sourceLang : readLang;
   const [cursor, setCursor] = useState<string>();
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
-  const playingTrack = useRef<HTMLAudioElement | null>(null);
   const [error, setError] = useState('');
   const [mergeProgress, setMergeProgress] = useState(0);
 
   useEffect(() => {
     if (DEMO) return;
     let live = true;
-    setPlans([]); setPlan(null); setProgress(null); setCursor(undefined);
+    setError(''); setReady(false); setPlans([]); setPlan(null); setProgress(null); setCursor(undefined);
     Promise.all([api.voices(), storyBatchApi.plans(chapter)]).then(async ([voices, list]) => {
       if (!live) return;
       setCatalog(voices.filter(item => ['azure', 'gemini'].includes(item.provider) && item.available !== false));
@@ -46,9 +52,10 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
         const saved = await storyBatchApi.progress(chapter, latest.planId);
         if (live) setProgress(saved);
       }
+      if (live) setReady(true);
     }).catch(err => { if (live) setError(message(err)); });
-    return () => { live = false; playingTrack.current?.pause(); playingTrack.current = null; };
-  }, [chapter.chapterId, chapter.revision]);
+    return () => { live = false; };
+  }, [chapter.chapterId, chapter.revision, reload]);
 
   useEffect(() => {
     const first = catalog.find(item => item.lang === outputLang && item.provider === provider && item.voices.length);
@@ -97,14 +104,6 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
     return () => { live = false; controller.abort(); clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility); };
   }, [chapter.chapterId, plan?.planId, progress?.status]);
-
-  const onTrackStart = useCallback((audio: HTMLAudioElement) => {
-    if (playingTrack.current && playingTrack.current !== audio) playingTrack.current.pause();
-    playingTrack.current = audio;
-  }, []);
-  const onTrackStop = useCallback((audio: HTMLAudioElement) => {
-    if (playingTrack.current === audio) playingTrack.current = null;
-  }, []);
 
   async function run(action: () => Promise<void>) {
     if (locked.current) return;
@@ -170,34 +169,53 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
     (plan.translateTo || null) === (useApproved && approvedRevision ? null : outputLang === chapter.sourceLang ? null : outputLang) &&
     (plan.textSource || 'original') === (useApproved && approvedRevision ? 'approved_translation' : 'original') &&
     (plan.textSource !== 'approved_translation' || plan.translationRevision === approvedRevision);
-  const canGenerate = !busy && !dirty && !!voice && !!chapter.segmentCount &&
-    progress?.status !== 'RUNNING' && progress?.status !== 'UNCERTAIN' &&
+  const canGenerate = ready && !busy && !dirty && !progress?.uncertain && !!voice && !!chapter.segmentCount &&
+    !['RUNNING', 'PAUSING', 'UNCERTAIN'].includes(progress?.status || '') &&
+    Number.isFinite(speed) && speed >= 0.7 && speed <= 1.2 &&
     !(samePlan && !!progress && progress.status !== 'DRAFT');
-  return <section className="story-audio" aria-label="Tạo audio chương">
-    <div className="story-audio-heading"><h3>Tạo audio chương</h3>
-      <span>{outputLang !== chapter.sourceLang
-        ? `${languageNames[chapter.sourceLang] || chapter.sourceLang} → ${languageNames[outputLang] || outputLang}`
-        : languageNames[outputLang] || outputLang}</span></div>
-    {DEMO ? <p>Cần kết nối backend để tạo audio chương.</p> : <>
-      {error && <p role="alert" className="inline-error">{error}</p>}
+  const setup = <div className="story-generation">
       {dirty && <p className="story-hint">Lưu nội dung chương trước khi tạo audio.</p>}
       {approvedRevision && <label className="story-audio-source"><input type="checkbox" checked={useApproved}
-        onChange={event => setUseApproved(event.target.checked)} /> Đọc bản dịch tiếng Việt đã duyệt</label>}
+        onChange={event => setUseApproved(event.target.checked)} /> Đọc bản dịch đã duyệt</label>}
       {plan?.textSource === 'approved_translation' && approvedRevision && plan.translationRevision !== approvedRevision &&
         <p className="story-hint">Bản dịch đã duyệt mới hơn kế hoạch audio này. Tạo kế hoạch mới để đọc bản mới.</p>}
+      <details className="story-voice-options"><summary><Icon name="mic" size={18} />
+        <span>{language?.voices.find(item => item.id === voice)?.name || voice || 'Chọn giọng kể'}</span>
+        <small>{provider === 'gemini' ? 'Gemini' : 'Azure'} · {speed}×</small><Icon name="chevron" size={16} /></summary>
+      {targetLang && targetLang !== chapter.sourceLang && !useApproved && <label className="story-read-language">Ngôn ngữ đọc
+        <select aria-label="Ngôn ngữ đọc" value={readLang} disabled={busy} onChange={event => setReadLang(event.target.value)}>
+          {[chapter.sourceLang, targetLang].map(code => <option key={code} value={code}>{languageNames[code] || code}</option>)}
+        </select></label>}
       <StoryAudioSettings language={language} outputLang={outputLang} provider={provider} voice={voice}
         speed={speed} style={style} intensity={intensity} onProvider={setProvider}
         onVoice={value => { setVoice(value); setStyle('neutral'); setIntensity(1); }} onSpeed={setSpeed}
-        onStyle={value => { setStyle(value); setIntensity(1); }} onIntensity={setIntensity} />
+        onStyle={value => { setStyle(value); setIntensity(1); }} onIntensity={setIntensity} /></details>
       <div className="story-audio-summary"><span>{chapter.segmentCount} đoạn</span>
         <span>{chapter.textLength.toLocaleString('vi-VN')} ký tự</span>
         {quota !== null && <span>Còn {quota.toLocaleString('vi-VN')} ký tự hôm nay</span>}</div>
       <button className="primary-button" disabled={!canGenerate} onClick={() => void run(createAndStart)}>
-        {busy ? 'Đang chuẩn bị…' : 'Tạo audio chương'}
+        <Icon name="wave" size={18} />{busy ? 'Đang chuẩn bị…' : 'Tạo giọng kể'}
       </button>
+  </div>;
+  return <section className="story-audio" aria-label="Tạo audio chương">
+    <div className="story-audio-heading"><h3>Giọng kể</h3>
+      <span>{outputLang !== chapter.sourceLang
+        ? `${languageNames[chapter.sourceLang] || chapter.sourceLang} → ${languageNames[outputLang] || outputLang}`
+        : languageNames[outputLang] || outputLang}</span></div>
+    {DEMO ? <p>Cần kết nối backend để tạo audio chương.</p> : <>
+      {error && <div role="alert" className="inline-error">{error}{!ready && <button onClick={() => setReload(value => value + 1)}>Tải lại chương</button>}</div>}
+      {!ready && !error && <p role="status" className="story-hint">Đang tải chương…</p>}
+      {!progress?.done && setup}
       {plan && progress && <StoryRunProgress plan={plan} progress={progress} plans={plans}
         chapterNumber={chapter.chapterNumber} voiceLabel={voiceName(undefined, plan.voice, '', outputLang)}
-        busy={busy} hasCursor={!!cursor} onPlaybackStart={onTrackStart} onPlaybackStop={onTrackStop}
+        busy={busy} hasCursor={!!cursor} currentId={playback.currentId} playing={playback.playing}
+        onPlay={index => void run(async () => {
+          const first = await storyBatchApi.progress(chapter, plan.planId);
+          const items = await storyQueuePages(first, cursor => storyBatchApi.progress(chapter, plan.planId, cursor));
+          const queue = storyListeningQueue(chapter, plan, items, index);
+          if (!queue.length) throw new Error('Đoạn này chưa sẵn sàng. Hãy làm mới chương.');
+          await playback.play(queue);
+        })}
         onPause={() => void run(() => control('pause'))}
         onResume={() => void run(() => control('resume'))}
         onRetry={id => void run(() => control('resume', id))}
@@ -207,6 +225,7 @@ export default function StoryAudio({ chapter, dirty, targetLang, approvedRevisio
           setProgress(next); setCursor(progress.nextCursor!);
         })}
         onTop={() => void run(async () => { setProgress(await storyBatchApi.progress(chapter, plan.planId)); setCursor(undefined); })} />}
+      {!!progress?.done && <details className="story-create-options"><summary>Giọng kể & tạo mới</summary>{setup}</details>}
       {plan && progress && progress.total > 1 && progress.done === progress.total && <div className="story-merge">
         <button className="secondary-button" disabled={busy} onClick={() => void run(mergeAudio)}>
           {busy ? `Đang gộp ${mergeProgress}/${progress.total} đoạn…` : 'Gộp và tải MP3 cả chương'}

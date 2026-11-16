@@ -4,11 +4,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { router, Tabs } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, interpolateColor, runOnJS, useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
-import { Glass, Icon, Label, type IconName } from './ui';
+import { Glass, Icon, type IconName } from './ui';
 import { useStudio } from '../state/Studio';
 import { usePlayback } from '../state/Playback';
 import { scrubIndex } from '../lib/geometry';
-import { voiceName } from '../lib/model';
+import PlaybackBar from './PlaybackBar';
 import { useLayout } from '../hooks/useLayout';
 import { useKeyboardState } from '../hooks/useKeyboard';
 
@@ -35,8 +35,8 @@ function TabItem({ index, position, selected, onPress, onPressIn, onPressOut, he
 }
 
 export default function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
-  const { colors, isDark, haptic, languages, reducedMotion } = useStudio();
-  const { current, playing, toggle } = usePlayback();
+  const { isDark, haptic, reducedMotion } = useStudio();
+  const { current } = usePlayback();
   const { insets, dockSide, dockBottom, dockHeight, showTabLabels } = useLayout();
   const keyboard = useKeyboardState();
   const position = useSharedValue(state.index);
@@ -87,14 +87,7 @@ export default function TabBar({ state, emitter, navigateToTab }: TabBarProps) {
   }));
   if (keyboard.visible) return null;
   return <View testID="bottom-dock" pointerEvents="box-none" style={[styles.container, { bottom: dockBottom, left: insets.left + dockSide, right: insets.right + dockSide }]}>
-    {current && <Glass style={styles.mini}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Mở trình phát bản thu" onPress={() => router.push('/recording')} style={styles.miniTitle}>
-        <View style={[styles.miniCover, { backgroundColor: colors.blueSoft }]}><Icon name="wave" color={colors.blue} size={20} /></View>
-        <View style={{ flex: 1, minWidth: 0, gap: 3 }}><Label weight="600" size={14} lines={1} maxScale={1.3}>{current.text}</Label><Label size={12} muted lines={1} maxScale={1.3}>{voiceName(languages, current.voice)}{current.local ? ' · Giọng trên máy' : ''}</Label></View>
-      </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={playing ? 'Dừng nghe' : 'Phát bản thu'} onPress={() => void toggle()} hitSlop={10} style={{ padding: 10 }}>
-        <Icon name={playing ? 'pause' : 'play'} size={22} /></Pressable>
-    </Glass>}
+    {current && <PlaybackBar />}
     <View style={styles.dock}>
       <GestureDetector gesture={gesture}>
         <View collapsable={false} onLayout={event => { width.set(event.nativeEvent.layout.width); }} style={[styles.tabs, { height: dockHeight }]}>
@@ -125,7 +118,4 @@ const styles = StyleSheet.create({
   selection: { position: 'absolute', left: 5, top: 5, bottom: 5, borderRadius: 35 },
   create: { flexShrink: 0, borderRadius: 35, boxShadow: '0 5px 18px rgba(0,0,0,0.10)' },
   createButton: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  mini: { borderRadius: 25, minHeight: 62, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center' },
-  miniTitle: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', paddingRight: 12 },
-  miniCover: { width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
 });

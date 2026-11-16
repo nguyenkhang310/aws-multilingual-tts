@@ -42,7 +42,7 @@ import { useSidebarMotion } from "./hooks/useSidebarMotion";
 import { useTheme } from "./hooks/useTheme";
 import Dashboard from "./views/Dashboard";
 import Audiobooks from "./views/Audiobooks";
-import type { StoryChapter } from '../../shared/story';
+import { StoryPlaybackContext } from './hooks/StoryPlayback';
 import type { HistoryItem, Page, Preferences } from "./lib/types";
 import { MAX_DOCUMENT_CHARS, OCR_LANGUAGES, wordCount } from '../../shared/documents';
 import { expressionHint } from '../../shared/expression';
@@ -75,9 +75,8 @@ function getPreferences(): Preferences {
 
 export default function App() {
   const [page, setPage] = useState<Page>(currentPage);
-  const [storyChapters, setStoryChapters] = useState<StoryChapter[]>([]);
-  const [storyChapterId, setStoryChapterId] = useState<string | null>(null);
-  const [storyProjectTitle, setStoryProjectTitle] = useState<string | null>(null);
+  const pageRef = useRef(page);
+  const [storyQueue, setStoryQueue] = useState<HistoryItem[]>([]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [query, setQuery] = useState("");
   const [languageFilter, setLanguageFilter] = useState("all");
@@ -127,6 +126,8 @@ export default function App() {
     setLanguageFilter("all");
   };
   const navigate = useCallback((destination: Page) => {
+    if (destination !== pageRef.current && !window.dispatchEvent(new Event('tts:before-navigate', { cancelable: true }))) return;
+    pageRef.current = destination;
     location.hash = destination;
     setPage(destination);
     setDialog(null);
@@ -137,7 +138,13 @@ export default function App() {
 
   useEffect(() => {
     const change = () => {
-      setPage(currentPage());
+      const destination = currentPage();
+      if (destination !== pageRef.current && !window.dispatchEvent(new Event('tts:before-navigate', { cancelable: true }))) {
+        window.history.pushState(window.history.state, '', `#${pageRef.current}`);
+        return;
+      }
+      pageRef.current = destination;
+      setPage(destination);
       setDialog(null);
       setQuery("");
       setLanguageFilter("all");
@@ -173,8 +180,22 @@ export default function App() {
   }, [dialog]);
 
   async function playRecording(item: HistoryItem) {
+    if (!item.storyChapterId) setStoryQueue([]);
     const selected = studio.currentAudio?.jobId === item.jobId ? item : await studio.openRecording(item);
     if (selected?.status === "DONE") setPlaybackRequest({ jobId: selected.jobId, serial: ++playbackSerial.current });
+  }
+
+  async function playStory(queue: HistoryItem[]) {
+    const item = queue[0];
+    if (!item) return;
+    if (studio.currentAudio?.jobId === item.jobId) {
+      setPlaybackRequest({ jobId: item.jobId, serial: ++playbackSerial.current });
+      return;
+    }
+    const selected = await studio.openRecording(item);
+    if (!selected) return;
+    setStoryQueue(queue);
+    setPlaybackRequest({ jobId: item.jobId, serial: ++playbackSerial.current });
   }
 
   const visibleVoices = studio.languages
@@ -405,8 +426,6 @@ export default function App() {
       <div ref={sidebarMotion.ref} className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
         <div className="glass-backdrop" aria-hidden="true" />
         <Sidebar page={page} collapsed={sidebarCollapsed} count={studio.history.length}
-          storyChapters={storyChapters} storyProjectTitle={storyProjectTitle}
-          selectedChapterId={storyChapterId} onChapter={setStoryChapterId}
           onToggle={sidebarMotion.toggleWithMotion}
           onNavigate={navigate} />
         <div className="workspace">
@@ -429,8 +448,8 @@ export default function App() {
                 hasMoreHistory={!!studio.nextCursor}
               />
             )}
-            {page === "audiobooks" && <Audiobooks onChaptersChange={setStoryChapters} onProjectChange={setStoryProjectTitle}
-              selectedChapterId={storyChapterId} onChapterChange={setStoryChapterId} />}
+            {page === "audiobooks" && <StoryPlaybackContext.Provider value={{ currentId: studio.currentAudio?.jobId ?? null,
+              playing: playingJobId === studio.currentAudio?.jobId, play: playStory }}><Audiobooks /></StoryPlaybackContext.Provider>}
             {page === "settings" && (
               <div className="page-content settings-page">
                 <section className="settings-card surface">
@@ -958,9 +977,16 @@ export default function App() {
             <div className="player-dock">
               <AudioPlayer
                 item={studio.currentAudio}
-                queue={studio.history}
-                onSelect={studio.openRecording}
-                onLibrary={() => navigate("library")}
+                queue={studio.currentAudio?.storyChapterId ? storyQueue : studio.history}
+                ordered={!!studio.currentAudio?.storyChapterId}
+                onSelect={async item => {
+                  if (item.storyChapterId) {
+                    const selected = await studio.openRecording(item);
+                    if (!selected) return;
+                    setPlaybackRequest({ jobId: item.jobId, serial: ++playbackSerial.current });
+                  } else await playRecording(item);
+                }}
+                onLibrary={() => navigate(studio.currentAudio?.storyChapterId ? "audiobooks" : "library")}
                 volume={preferences.volume}
                 onVolume={(volume) => setPreferences((p) => ({ ...p, volume }))}
                 notify={notify}
@@ -981,8 +1007,6 @@ export default function App() {
       {dialog === "menu" && (
         <Modal title="TTS Studio" onClose={closeDialog} className="mobile-nav-modal">
           <Sidebar drawer page={page} collapsed={false} count={studio.history.length}
-            storyChapters={storyChapters} storyProjectTitle={storyProjectTitle}
-            selectedChapterId={storyChapterId} onChapter={setStoryChapterId}
             onToggle={closeDialog} onNavigate={navigate} />
         </Modal>
       )}

@@ -10,11 +10,19 @@ Web và Expo dùng chung API, catalog giọng và bản thu. Azure là nguồn m
 | Nhập nội dung chương | Từng/nhiều tệp, tối đa 10 tệp/lần | Từng tệp TXT/MD/DOCX/PDF/ảnh, hoặc nhập tay |
 | Giới hạn | 50 MiB/tệp, 1.000.000 ký tự/chương | Cùng giới hạn; chia trang chỉnh sửa 30.000 ký tự |
 | Dịch và duyệt | Sửa từng phần, duyệt, dịch nhiều chương | Cùng API và bước duyệt; dừng khi ứng dụng ra nền |
-| Audio | Chọn nguồn/giọng/tốc độ/sắc thái, xác nhận, pause/resume/retry | Cùng API; nghe, tua và lưu/chia sẻ từng MP3 trong bảng phát |
+| Audio | Chọn nguồn/giọng/tốc độ/sắc thái, xác nhận, pause/resume/retry | Cùng API; nghe, tua và lưu/chia sẻ trong trình phát chung |
 | Gộp MP3 đã hoàn tất | Tại trình duyệt, tối đa 60 phút | Chưa hỗ trợ gộp; từng đoạn vẫn nghe/chia sẻ được |
 | Backup JSON | Xuất/khôi phục | Xuất qua bảng chia sẻ hệ thống, khôi phục từ Files |
 
-App đặt **Nội dung / Bản dịch / Âm thanh** trong từng chương. Tạo truyện, thông tin, chọn giọng và thao tác nâng cao mở bằng sheet; web thu gọn các phần tương ứng. Có xác nhận bỏ nội dung chưa lưu. Không nhét cấu hình và mô tả dài vào màn chính; giữ kính, sắc thái sáng/tối và giảm chuyển động.
+Web/app tổ chức Audio Truyện theo **Thư viện → Truyện → Chương**. Bìa và tìm kiếm nằm ở thư viện; danh sách chương nằm trong truyện, không lặp ở sidebar. Chương đã lưu mở mục **Nghe & tạo**, chương trống mở **Nội dung**. **Bản dịch** giữ bước sửa và duyệt trước khi tạo audio. Nhập chương, ảnh bìa, thuật ngữ, dịch nhiều chương và sao lưu nằm trong thao tác riêng, không ghép nhiều form lên trang chính.
+
+Nút nghe ở từng đoạn và thanh phát chung điều khiển cùng phiên âm thanh. Hàng đợi tải các trang của lần tạo đã chọn, chỉ phát các đoạn hoàn tất liên tiếp và dừng trước đoạn lỗi/chưa xong. Web chỉ có một HTML audio; Expo dùng một AudioPlayer của PlaybackProvider. Thanh nhỏ và màn phát lớn dùng chung play/pause/seek; thu nhỏ không dừng tiếng. Đổi đoạn lấy lại URL từ API, không lưu URL có hạn vào backup. App mở chương thành trang nội dung, không đặt thêm modal chương bên dưới modal phát.
+
+Ngôn ngữ nhìn theo [Liquid Glass của Apple](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass) và [hướng dẫn WWDC26](https://developer.apple.com/wwdc26/guides/design/): kính dùng ở thanh điều khiển, nội dung dùng bố cục phẳng, giữ tương phản và giảm chuyển động. Cách tổ chức nghe tham khảo [Apple Books](https://support.apple.com/en-in/102395) và [Audiobookshelf](https://github.com/advplyr/audiobookshelf-app); không sao chép mã hoặc giao diện cũ của các dự án này.
+
+Cửa sổ phụ có một tiêu đề và phần nội dung cuộn riêng. Nhập tệp đi qua bước kiểm tra trước khi lưu, chỉ đóng khi lưu xong toàn bộ; lỗi giữ các chương còn lại để thử lại. App đổi bảng chọn trong cùng một Sheet, có tìm kiếm ngôn ngữ/giọng; ô soạn chừa chỗ cho bàn phím và thanh phát. Tên/số chương và bản nháp được kiểm tra trước khi gửi API.
+
+App quay lại theo từng cấp Chương → Truyện → Thư viện → trang trước. Lưu lần đầu giữ nguyên ô nhập và mục đang chọn; phản hồi tải muộn không mở lại màn đã đóng. Web kiểm tra bản nháp khi dùng Back/đổi trang, chọn lại trang hiện tại không khởi tạo lại nội dung. Đóng cửa sổ trả focus về nút mở mà không cuộn lệch trang.
 
 Ảnh bìa JPEG/PNG tối đa 5 MiB tải trực tiếp qua ticket S3 private; API chỉ lưu metadata, URL xem có hạn và được làm mới một lần khi lỗi. Backup gồm nội dung, metadata và bản dịch đã duyệt, **không chứa MP3, ảnh bìa hoặc URL đã ký**. Local Moto mất dữ liệu khi dừng; Sandbox có thể xóa cuối phiên nên cần lưu backup. Callback STORY-01C đã có code và test giả lập, chưa xác minh destination trên AWS; mất callback vẫn cần đối soát/tick. Xem [batch](../docs/CONVENTIONS.md#audio-truyện-story-01b--batch-tts-và-queue-14112026) và [ảnh bìa](../docs/CONVENTIONS.md#ảnh-bìa--story-ui-01-15112026).
 
@@ -32,10 +40,10 @@ Nhận route/URL/policy từ M1, catalog/limits từ M2, jobs/history/cursor/pre
 
 | File/thư mục trong module | Làm việc gì |
 |---|---|
-| `web/src/components/` | Control, sidebar, modal, AudioPlayer và player đoạn truyện. |
+| `web/src/components/` | Control, sidebar, modal và AudioPlayer dùng chung. |
 | `web/src/hooks/` | Luồng studio, theme, sidebar motion và usePlayback. |
 | `web/src/lib/` | API, types, dữ liệu và đọc tài liệu. |
-| `web/src/views/` | Trang tổng quan; các màn khác hiện nằm trong App.tsx. |
+| `web/src/views/` | Tổng quan và các màn Audio Truyện; studio/cài đặt nằm trong App.tsx. |
 | `web/public/` | Logo, font, giấy phép; asset được phục vụ trực tiếp. |
 | `web/tests/` | Kiểm thử React/DOM offline, gồm timeline/seek và async races. |
 | `app/src/app/` | Routes Expo Router, (tabs), _layout và các màn compose/settings/recording. |

@@ -1,7 +1,8 @@
 import type { StoryPlan, StoryProgress } from '../../../shared/story';
 import { expressionName } from '../../../shared/expression';
 import { languageNames } from '../../../shared/languages';
-import StoryTrackPlayer from './StoryTrackPlayer';
+import { Icon } from './ui';
+import { useEffect, useState } from 'react';
 
 const statusName: Record<string, string> = { DRAFT: 'Chưa chạy', RUNNING: 'Đang chạy', DONE: 'Đã hoàn tất',
   FAILED: 'Có lỗi', UNCERTAIN: 'Cần đối soát', BLOCKED_QUOTA: 'Đã chạm giới hạn', STALE: 'Nội dung đã đổi',
@@ -17,13 +18,20 @@ const recoveryName: Record<string, string> = {
 const planDate = (value: string) => new Intl.DateTimeFormat('vi-VN',
   { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 
-export default function StoryRunProgress({ plan, progress, plans, chapterNumber, voiceLabel, busy, hasCursor,
-  onSelectPlan, onNext, onTop, onPlaybackStart, onPlaybackStop, onPause, onResume, onRetry }: {
+export default function StoryRunProgress({ plan, progress, plans, voiceLabel, busy, hasCursor,
+  onSelectPlan, onNext, onTop, currentId, playing, onPlay, onPause, onResume, onRetry }: {
   plan: StoryPlan; progress: StoryProgress; plans: StoryPlan[]; chapterNumber: number; voiceLabel: string;
   busy: boolean; hasCursor: boolean; onSelectPlan: (id: string) => void; onNext: () => void; onTop: () => void;
-  onPlaybackStart: (audio: HTMLAudioElement) => void; onPlaybackStop: (audio: HTMLAudioElement) => void;
+  currentId: string | null; playing: boolean; onPlay: (index: number) => void;
   onPause: () => void; onResume: () => void; onRetry: (segmentId: string) => void;
 }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const times = progress.items.filter(item => item.retryable && (item.nextRetryAt || 0) * 1000 > now).map(item => item.nextRetryAt! * 1000);
+    if (!times.length) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(1, Math.min(...times) - Date.now() + 1));
+    return () => clearTimeout(timer);
+  }, [progress, now]);
   const counts = [
     ['Đang xử lý', (progress.processing || 0) + (progress.submitted || 0) + (progress.claimed || 0)],
     ['Đang chờ', progress.queued || 0], ['Lỗi', progress.failed || 0],
@@ -50,7 +58,7 @@ export default function StoryRunProgress({ plan, progress, plans, chapterNumber,
         {statusName[progress.status] || progress.status}</span><strong>{progress.done}/{progress.total} đoạn hoàn tất</strong>
         <span>{progress.percentComplete ?? 0}%</span></div>
       <progress value={progress.done} max={progress.total} aria-label="Tiến độ audio chương" />
-      <div className="story-run-counts">{counts.map(([label, value]) => <span key={label}><strong>{value}</strong>{label}</span>)}</div>
+      <div className="story-run-counts">{counts.filter(([, value]) => value > 0).map(([label, value]) => <span key={label}><strong>{value}</strong>{label}</span>)}</div>
       {progress.status === 'RUNNING' && <button disabled={busy} onClick={onPause}>Tạm dừng</button>}
       {progress.status === 'PAUSING' && <p role="status">Đang chờ lượt đã được cấp hoàn tất; chưa hủy job đang chạy.</p>}
       {progress.recoveryReason && <p role="status">{recoveryName[progress.recoveryReason] || progress.recoveryReason}</p>}
@@ -61,15 +69,17 @@ export default function StoryRunProgress({ plan, progress, plans, chapterNumber,
       <ol className="story-audio-items">{progress.items.map(item => <li key={item.segmentId}>
         <div className="story-audio-item-heading"><strong>Đoạn {item.index + 1}</strong>
           <span className={`story-status story-status-${item.status.toLowerCase()}`}>{statusName[item.status] || item.status}</span></div>
-        {item.status === 'DONE' && item.audioUrl && <StoryTrackPlayer
-          fileName={`chuong ${String(chapterNumber).padStart(2, '0')} - doan ${item.index + 1}.mp3`}
-          src={item.audioUrl} onPlaybackStart={onPlaybackStart} onPlaybackStop={onPlaybackStop} />}
+        {item.status === 'DONE' && item.audioUrl && item.jobId && <button className="story-listen-button" disabled={busy}
+          aria-label={`${currentId === item.jobId && playing ? 'Tạm dừng' : 'Nghe'} đoạn ${item.index + 1}`}
+          aria-pressed={currentId === item.jobId && playing} onClick={() => onPlay(item.index)}>
+          <Icon name={currentId === item.jobId && playing ? 'pause' : 'play'} size={17} />
+          {currentId === item.jobId && playing ? 'Đang phát' : 'Nghe'}</button>}
         {item.status === 'FAILED' && !item.retryable && <small>Không thể tự thử lại · {item.errorCode || 'cần kiểm tra cấu hình'}</small>}
         {item.status === 'UNCERTAIN' && <small>Cần đối soát trạng thái trước khi gửi lại.</small>}
         {item.status === 'FAILED' && item.retryable && <div>
           <small>{item.errorCode || 'Lỗi tạm thời'} · lần thử {item.attemptCount || 1}/{progress.maxAttempts || 3}
             {item.nextRetryAt ? ` · thử lại sau ${planDate(new Date(item.nextRetryAt * 1000).toISOString())}` : ''}</small>
-          <button disabled={busy || (item.nextRetryAt || 0) > Date.now() ||
+          <button disabled={busy || (item.nextRetryAt || 0) * 1000 > now ||
             (item.attemptCount || 0) >= (progress.maxAttempts || 3)} onClick={() => onRetry(item.segmentId)}>Thử lại đoạn này</button>
         </div>}
       </li>)}</ol>

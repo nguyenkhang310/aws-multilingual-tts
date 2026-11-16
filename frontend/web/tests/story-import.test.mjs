@@ -8,7 +8,7 @@ test('Audio Truyện nhập nhiều file sau khi duyệt thứ tự và báo l�
   const { storyApi } = await env.load('lib/story-api.ts');
   const { default: StoryImport } = await env.load('views/StoryImport.tsx');
   const project = { projectId: 'a'.repeat(32), sourceLang: 'vi-VN' };
-  const saved = [];
+  const saved = [], notifications = [];
   let failSecond = true;
   let updates = 0;
   storyApi.createChapter = async (_id, number, title) => ({ chapterId: number.toString(16).padStart(32, '0'),
@@ -23,15 +23,18 @@ test('Audio Truyện nhập nhiều file sau khi duyệt thứ tự và báo l�
     saved.push({ item, text }); return item;
   };
   try {
-    await act(async () => { env.root.render(React.createElement(StoryImport, { project, onImported: () => {} })); await settle(); });
+    await act(async () => { env.root.render(React.createElement(StoryImport, { project, onImported: (chapter, complete) => notifications.push({ chapter, complete }) })); await settle(); });
     const input = env.mount.querySelector('input[type="file"]');
     assert.equal(input.hidden, true);
-    assert.match(env.mount.querySelector('button.text-button').textContent, /Nhập tệp/);
+    assert.match(env.mount.querySelector('button.text-button').textContent, /Chọn tài liệu/);
     const files = [new env.win.File(['Nội dung chương một.'], 'Chapter 1.txt', { type: 'text/plain' }),
       new env.win.File(['Nội dung chương hai 😊'], 'Chapter 2.txt', { type: 'text/plain' })];
     Object.defineProperty(input, 'files', { configurable: true, value: files });
     await act(async () => { input.dispatchEvent(new env.win.Event('change', { bubbles: true })); await settle(); });
     assert.equal(env.mount.querySelectorAll('.story-draft').length, 2);
+    Object.defineProperty(input, 'files', { configurable: true, value: [new env.win.File(['bad'], 'broken.bin', { type: 'application/octet-stream' })] });
+    await act(async () => { input.dispatchEvent(new env.win.Event('change', { bubbles: true })); await settle(); });
+    assert.equal(env.mount.querySelectorAll('.story-draft').length, 2, 'Chọn tệp lỗi không xóa các chương đang duyệt');
     const order = env.mount.querySelectorAll('.story-draft')[1].querySelectorAll('input[type="number"]')[1];
     await act(async () => {
       Object.getOwnPropertyDescriptor(env.win.HTMLInputElement.prototype, 'value').set.call(order, '5');
@@ -40,11 +43,13 @@ test('Audio Truyện nhập nhiều file sau khi duyệt thứ tự và báo l�
     const save = () => [...env.mount.querySelectorAll('button')].find(button => button.textContent.includes('Lưu ') && button.textContent.includes('chương'));
     await act(async () => { save().click(); await settle(); });
     assert.equal(saved.length, 1);
+    assert.deepEqual(notifications.map(item => item.complete), [false], 'Lỗi giữa chừng giữ màn nhập mở');
     assert.match(env.mount.textContent, /S3 tạm lỗi/);
     await act(async () => { save().click(); await settle(); });
     assert.equal(saved.length, 2);
     assert.equal(saved[1].item.order, 5);
     assert.equal(saved[1].text, 'Nội dung chương hai 😊');
     assert.equal(updates, 1);
+    assert.deepEqual(notifications.map(item => item.complete), [false, true], 'Chỉ đóng luồng sau khi lưu xong tất cả chương còn lại');
   } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
 });

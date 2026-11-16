@@ -15,6 +15,7 @@ export default function AudioPlayer({
   notify,
   playbackRequest,
   onPlayingChange,
+  ordered = false,
 }: {
   item: HistoryItem | null;
   queue: HistoryItem[];
@@ -24,6 +25,7 @@ export default function AudioPlayer({
   onVolume: (volume: number) => void;
   notify: (message: string, error?: boolean) => void;
   playbackRequest?: { jobId: string; serial: number } | null;
+  ordered?: boolean;
   onPlayingChange?: (jobId: string | null) => void;
 }) {
   const [downloading, setDownloading] = useState(false);
@@ -33,10 +35,8 @@ export default function AudioPlayer({
   const { audioRef, source, playing, loading, elapsed, duration, progress, devicePlayback,
     stop, togglePlayback, seek, mediaEvents } = usePlayback(item, volume, repeat, notify);
   useEffect(() => { if (volume > 0) previousVolume.current = volume; }, [volume]);
-  const recordings = queue
-    .filter((recording) => recording.status === "DONE")
-    .slice()
-    .reverse();
+  const completed = queue.filter(recording => recording.status === 'DONE');
+  const recordings = ordered ? completed : completed.slice().reverse();
   const currentIndex = recordings.findIndex((recording) => recording.jobId === item?.jobId);
   const toggleRef = useRef(togglePlayback);
   toggleRef.current = togglePlayback;
@@ -85,7 +85,7 @@ export default function AudioPlayer({
     stop();
     try {
       await onSelect(recording);
-    } finally {
+    } catch { notify("Chưa mở được bản thu. Hãy thử lại.", true); } finally {
       setSwitching(false);
     }
   }
@@ -138,7 +138,7 @@ export default function AudioPlayer({
         </div>
         <div className="player-details">
           <div className="player-meta">
-            <strong title={item?.text}>{item ? item.text : "Chưa có âm thanh"}</strong>
+            <strong title={item?.text}>{item ? item.title || item.text : "Chưa có âm thanh"}</strong>
           </div>
           <div className="player-track">
             <time>{formatTime(elapsed)}</time>
@@ -196,6 +196,7 @@ export default function AudioPlayer({
         </Button>
       </div>
       <audio key={source} ref={audioRef} src={item?.audioUrl || undefined} preload="metadata" loop={repeat} {...mediaEvents}
+        onEnded={() => { mediaEvents.onEnded(); if (ordered && !repeat) void selectAdjacent(1); }}
         onCanPlay={() => { if (item?.audioUrl) markTtsPlayable(item.jobId); }} />
     </section>
   );

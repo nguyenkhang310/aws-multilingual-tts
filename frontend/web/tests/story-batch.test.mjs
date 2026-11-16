@@ -7,7 +7,11 @@ test('Audio Truyện duyệt kế hoạch, start một lần và mở lại ti�
   const env = await environment();
   const { api } = await env.load('lib/api.ts');
   const { storyBatchApi } = await env.load('lib/story-batch-api.ts');
-  const { default: StoryAudio } = await env.load('views/StoryAudio.tsx');
+  const { default: StoryAudioView } = await env.load('views/StoryAudio.tsx');
+  const { StoryPlaybackContext } = await env.load('hooks/StoryPlayback.tsx');
+  const played = [];
+  const StoryAudio = props => React.createElement(StoryPlaybackContext.Provider,
+    { value: { currentId: null, playing: false, play: async queue => { played.push(queue); } } }, React.createElement(StoryAudioView, props));
   const chapter = { projectId: 'a'.repeat(32), chapterId: 'b'.repeat(32), sourceLang: 'vi-VN',
     revision: 2, segmentCount: 2, textLength: 2000 };
   const plan = { planId: 'c'.repeat(32), projectId: chapter.projectId, chapterId: chapter.chapterId,
@@ -50,11 +54,13 @@ test('Audio Truyện duyệt kế hoạch, start một lần và mở lại ti�
       intensity.dispatchEvent(new env.win.Event('input', { bubbles: true }));
       await settle();
     });
-    await act(async () => { button('Tạo audio chương').click(); await settle(); });
+    await act(async () => { button('Tạo giọng kể').click(); await settle(); });
     assert.match(env.mount.textContent, /2 đoạn · 2\.000 ký tự/);
     assert.equal(started, 1);
-    assert.equal(button('Tạo audio chương').disabled, true);
-    assert.equal(env.mount.querySelector('audio')?.getAttribute('src'), 'https://audio.test/one.mp3');
+    assert.equal(button('Tạo giọng kể').disabled, true);
+    assert.equal(env.mount.querySelectorAll('audio').length, 0, 'Chương không tạo trình phát riêng');
+    await act(async () => { env.mount.querySelector('[aria-label="Nghe đoạn 1"]').click(); await settle(); });
+    assert.equal(played[0][0].jobId, 'job-one');
     await act(async () => { env.root.render(null); await settle(); });
     await act(async () => { env.root.render(render()); await settle(); });
     assert.match(env.mount.textContent, /2\/2 đoạn hoàn tất/);
@@ -66,7 +72,11 @@ test('Audio Truyện khôi phục trạng thái quota, lỗi và chưa rõ sau r
   const env = await environment();
   const { api } = await env.load('lib/api.ts');
   const { storyBatchApi } = await env.load('lib/story-batch-api.ts');
-  const { default: StoryAudio } = await env.load('views/StoryAudio.tsx');
+  const { default: StoryAudioView } = await env.load('views/StoryAudio.tsx');
+  const { StoryPlaybackContext } = await env.load('hooks/StoryPlayback.tsx');
+  const played = [];
+  const StoryAudio = props => React.createElement(StoryPlaybackContext.Provider,
+    { value: { currentId: null, playing: false, play: async queue => { played.push(queue); } } }, React.createElement(StoryAudioView, props));
   const chapter = { projectId: 'a'.repeat(32), chapterId: 'b'.repeat(32), sourceLang: 'vi-VN',
     revision: 2, segmentCount: 4, textLength: 4000 };
   const plan = { planId: 'c'.repeat(32), sourceChapterRevision: 2, translateTo: null,
@@ -80,10 +90,10 @@ test('Audio Truyện khôi phục trạng thái quota, lỗi và chưa rõ sau r
   try {
     await act(async () => { env.root.render(React.createElement(StoryAudio,
       { chapter, targetLang: 'vi-VN', dirty: false })); await settle(); });
-    assert.match(env.mount.textContent, /Giới hạn1/);
-    assert.match(env.mount.textContent, /Lỗi1/);
+    assert.match(env.mount.textContent, /1Giới hạn/);
+    assert.match(env.mount.textContent, /1Lỗi/);
     assert.match(env.mount.textContent, /1Chưa rõ/);
-    assert.equal([...env.mount.querySelectorAll('button')].find(item => item.textContent === 'Tạo audio chương').disabled, true);
+    assert.equal([...env.mount.querySelectorAll('button')].find(item => item.textContent === 'Tạo giọng kể').disabled, true);
   } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
 });
 
@@ -91,7 +101,11 @@ test('Audio Truyện gửi Pause, Resume và Retry từng đoạn tới backend'
   const env = await environment();
   const { api } = await env.load('lib/api.ts');
   const { storyBatchApi } = await env.load('lib/story-batch-api.ts');
-  const { default: StoryAudio } = await env.load('views/StoryAudio.tsx');
+  const { default: StoryAudioView } = await env.load('views/StoryAudio.tsx');
+  const { StoryPlaybackContext } = await env.load('hooks/StoryPlayback.tsx');
+  const played = [];
+  const StoryAudio = props => React.createElement(StoryPlaybackContext.Provider,
+    { value: { currentId: null, playing: false, play: async queue => { played.push(queue); } } }, React.createElement(StoryAudioView, props));
   const chapter = { projectId: 'a'.repeat(32), chapterId: 'b'.repeat(32), sourceLang: 'vi-VN',
     chapterNumber: 4, revision: 2, segmentCount: 1, textLength: 20 };
   const plan = { planId: 'c'.repeat(32), sourceChapterRevision: 2, provider: 'azure', voice: 'HoaiMy',
@@ -137,7 +151,11 @@ test('truyện nguồn tiếng Trung chọn giọng Việt và gửi yêu cầu 
   const env = await environment();
   const { api } = await env.load('lib/api.ts');
   const { storyBatchApi } = await env.load('lib/story-batch-api.ts');
-  const { default: StoryAudio } = await env.load('views/StoryAudio.tsx');
+  const { default: StoryAudioView } = await env.load('views/StoryAudio.tsx');
+  const { StoryPlaybackContext } = await env.load('hooks/StoryPlayback.tsx');
+  const played = [];
+  const StoryAudio = props => React.createElement(StoryPlaybackContext.Provider,
+    { value: { currentId: null, playing: false, play: async queue => { played.push(queue); } } }, React.createElement(StoryAudioView, props));
   const chapter = { projectId: 'a'.repeat(32), chapterId: 'b'.repeat(32), sourceLang: 'cmn-CN',
     revision: 2, segmentCount: 1, textLength: 100 };
   api.voices = async () => [
@@ -159,9 +177,12 @@ test('truyện nguồn tiếng Trung chọn giọng Việt và gửi yêu cầu 
   try {
     await act(async () => { env.root.render(React.createElement(StoryAudio,
       { chapter, targetLang: 'vi-VN', dirty: false })); await settle(); });
+    assert.equal(env.mount.querySelector('[aria-label="Ngôn ngữ đọc"]').value, 'cmn-CN');
+    await act(async () => { const select = env.mount.querySelector('[aria-label="Ngôn ngữ đọc"]');
+      select.value = 'vi-VN'; select.dispatchEvent(new env.win.Event('change', { bubbles: true })); await settle(); });
     assert.match(env.mount.textContent, /Tiếng Trung giản thể → Tiếng Việt/);
     await act(async () => {
-      [...env.mount.querySelectorAll('button')].find(item => item.textContent === 'Tạo audio chương').click();
+      [...env.mount.querySelectorAll('button')].find(item => item.textContent === 'Tạo giọng kể').click();
       await settle();
     });
     assert.equal(input.voice, 'ExpressiveVoice');

@@ -3,12 +3,13 @@ import type { StoryChapter, StoryProject } from '../../../shared/story';
 import { translateStoryChapters } from '../../../shared/story-translation-run';
 import { storyTranslationApi as api } from '../lib/story-translation-api';
 
-export default function StoryTranslationBatch({ project, chapters }: { project: StoryProject; chapters: StoryChapter[] }) {
+export default function StoryTranslationBatch({ project, chapters, onBusy }: { project: StoryProject; chapters: StoryChapter[]; onBusy?: (value: boolean) => void }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [active, setActive] = useState<StoryChapter | null>(null);
   const [completed, setCompleted] = useState(0);
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
+  useEffect(() => { onBusy?.(running); return () => onBusy?.(false); }, [running, onBusy]);
   const currentPlan = useRef<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -38,8 +39,8 @@ export default function StoryTranslationBatch({ project, chapters }: { project: 
   }
 
   const available = chapters.filter(item => item.contentRevision && item.sourceLang !== project.targetLang);
-  if (!available.length) return null;
-  return <details className="story-translation-batch"><summary>Dịch nhiều chương</summary>
+  if (!available.length) return <p className="story-hint">Chưa có chương cần dịch.</p>;
+  return <section className="story-translation-batch" aria-label="Chọn chương cần dịch">
     {available.map(item => <label key={item.chapterId}><input type="checkbox" checked={selected.includes(item.chapterId)}
       disabled={running} onChange={event => setSelected(current => event.target.checked
         ? [...current, item.chapterId] : current.filter(id => id !== item.chapterId))} />
@@ -51,5 +52,5 @@ export default function StoryTranslationBatch({ project, chapters }: { project: 
     {running && <p>Đang dịch chương {active?.chapterNumber} · đã xử lý {completed}/{selected.length} chương.</p>}
     {!running && completed > 0 && <p>{completed} chương đã xử lý. Xem bản dịch trong từng chương.</p>}
     {error && <p className="inline-error" role="alert">{error}</p>}
-  </details>;
+  </section>;
 }

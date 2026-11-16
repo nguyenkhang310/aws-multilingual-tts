@@ -180,3 +180,27 @@ test("Tải MP3 bỏ qua cache để không dính response thiếu CORS từ th�
     assert.deepEqual(notices, []);
   } finally { await act(() => env.root.unmount()); await env.close(); }
 });
+
+test('Audio Truyện dùng một media element và chuyển đoạn đúng thứ tự của hàng đợi', async () => {
+  const env = await environment();
+  const { default: Player } = await env.load('components/AudioPlayer.tsx');
+  const queue = ['first', 'second', 'third'].map(id => ({ ...recording(id), title: `Chương một · ${id}`, storyChapterId: 'chapter' }));
+  const selected = [];
+  env.win.HTMLMediaElement.prototype.play = function () { this.dispatchEvent(new env.win.Event('play')); return Promise.resolve(); };
+  env.win.HTMLMediaElement.prototype.pause = function () { this.dispatchEvent(new env.win.Event('pause')); };
+  function Harness() {
+    const [item, setItem] = useState(queue[0]);
+    return React.createElement(Player, { item, queue, ordered: true, volume: 0.5, onVolume: () => {}, notify: () => {}, onLibrary: () => {},
+      onSelect: async next => { selected.push(next.jobId); setItem(next); } });
+  }
+  try {
+    await act(async () => { env.root.render(React.createElement(Harness)); await settle(); });
+    assert.equal(env.mount.querySelectorAll('audio').length, 1);
+    assert.match(env.mount.querySelector('.player-meta').textContent, /Chương một · first/);
+    await act(async () => { env.mount.querySelector('audio').dispatchEvent(new env.win.Event('ended')); await settle(); });
+    assert.deepEqual(selected, ['second']);
+    await act(async () => { env.mount.querySelector('[aria-label="Bản thu trước"]').click(); await settle(); });
+    assert.deepEqual(selected, ['second', 'first']);
+    assert.equal(env.mount.querySelectorAll('audio').length, 1);
+  } finally { await act(async () => env.root.unmount()); await env.close(); }
+});

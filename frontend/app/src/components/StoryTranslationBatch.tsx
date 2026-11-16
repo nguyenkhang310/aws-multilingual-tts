@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, View } from 'react-native';
 import { Action, Label } from './ui';
 import Sheet from './Sheet';
 import { StoryError, useStoryAction } from './StoryControls';
@@ -7,10 +7,11 @@ import { storyTranslationApi as api } from '../lib/story-api';
 import { translateStoryChapters, type StoryTranslationStep } from '../../../shared/story-translation-run';
 import type { StoryChapter, StoryProject } from '../../../shared/story';
 
-export default function StoryTranslationBatch({ project, chapters, close }: { project: StoryProject; chapters: StoryChapter[]; close: () => void }) {
+export default function StoryTranslationBatch({ project, chapters, close, embedded = false, onBusy }: { project: StoryProject; chapters: StoryChapter[]; close: () => void; embedded?: boolean; onBusy?: (value: boolean) => void }) {
   const [selected, setSelected] = useState<string[]>([]), [step, setStep] = useState<StoryTranslationStep | null>(null), [completed, setCompleted] = useState<number | null>(null);
   const controller = useRef<AbortController | null>(null), current = useRef<StoryTranslationStep | null>(null);
   const { busy, error, setError, run } = useStoryAction();
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
   const available = chapters.filter(item => item.contentRevision && item.sourceLang !== project.targetLang);
   async function pause() {
     controller.current?.abort();
@@ -21,7 +22,7 @@ export default function StoryTranslationBatch({ project, chapters, close }: { pr
     const subscription = AppState.addEventListener('change', state => { if (state !== 'active') controller.current?.abort(); });
     return () => { controller.current?.abort(); subscription.remove(); };
   }, []);
-  return <Sheet title="Dịch nhiều chương" visible close={() => { void pause().catch(() => {}).finally(close); }}>
+  const content = <View style={{ gap: 16 }}>
     <StoryError text={error} />
     {available.map(item => <Action key={item.chapterId} icon={selected.includes(item.chapterId) ? 'check' : 'book'} disabled={busy}
       onPress={() => setSelected(items => items.includes(item.chapterId) ? items.filter(id => id !== item.chapterId) : [...items, item.chapterId])}>{item.chapterNumber}. {item.title}</Action>)}
@@ -38,5 +39,6 @@ export default function StoryTranslationBatch({ project, chapters, close }: { pr
     })}>{busy ? `Đang dịch chương ${step?.chapter.chapterNumber ?? ''}` : 'Dịch các chương đã chọn'}</Action>
     {busy && <Action onPress={() => void pause().catch(error => setError(error.message))}>Tạm dừng</Action>}
     {completed !== null && <Label muted>{completed} chương đã xử lý. Mở từng chương để duyệt bản dịch.</Label>}
-  </Sheet>;
+  </View>;
+  return embedded ? content : <Sheet title="Dịch nhiều chương" visible close={() => { void pause().catch(() => {}).finally(close); }}>{content}</Sheet>;
 }

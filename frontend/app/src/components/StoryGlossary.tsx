@@ -6,16 +6,20 @@ import { StoryError, StoryInput, storyStyles as styles, useStoryAction } from '.
 import { storyTranslationApi as api } from '../lib/story-api';
 import type { StoryGlossary as Glossary } from '../../../shared/story-translation';
 
-export default function StoryGlossary({ projectId, close }: { projectId: string; close: () => void }) {
+export default function StoryGlossary({ projectId, close, embedded = false, onBusy, onDirty }: { projectId: string; close: () => void; embedded?: boolean; onBusy?: (value: boolean) => void; onDirty?: (value: boolean) => void }) {
   const [data, setData] = useState<Glossary>({ revision: 0, entries: [] }), [loaded, setLoaded] = useState(false);
+  const [savedEntries, setSavedEntries] = useState('[]');
   const [source, setSource] = useState(''), [target, setTarget] = useState('');
   const { busy, error, setError, run } = useStoryAction();
   useEffect(() => {
     let live = true;
-    void api.glossary(projectId).then(value => { if (live) { setData(value); setLoaded(true); } }).catch(error => { if (live) setError(error.message); });
+    void api.glossary(projectId).then(value => { if (live) { setData(value); setSavedEntries(JSON.stringify(value.entries)); setLoaded(true); } }).catch(error => { if (live) setError(error.message); });
     return () => { live = false; };
   }, [projectId, setError]);
-  return <Sheet title="Tên riêng và thuật ngữ" visible close={() => { if (!busy) close(); }}>
+  const dirty = !!source.trim() || !!target.trim() || JSON.stringify(data.entries) !== savedEntries;
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
+  useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
+  const content = <View style={{ gap: 16 }}>
     <StoryError text={error} /><StoryInput label="Từ gốc" value={source} onChangeText={setSource} maxLength={80} editable={!busy} />
     <StoryInput label="Cách dịch" value={target} onChangeText={setTarget} maxLength={120} editable={!busy} />
     <Action disabled={busy || !loaded || !source.trim() || !target.trim() || data.entries.length >= 200} onPress={() => {
@@ -23,6 +27,7 @@ export default function StoryGlossary({ projectId, close }: { projectId: string;
     }}>Thêm thuật ngữ</Action>
     {data.entries.map((item, index) => <View key={`${item.source}/${index}`} style={styles.row}><Label style={{ flex: 1 }}>{item.source} → {item.target}</Label>
       <Circle name="trash" label={`Xóa thuật ngữ ${item.source}`} disabled={busy} onPress={() => setData(current => ({ ...current, entries: current.entries.filter((_, i) => i !== index) }))} /></View>)}
-    <Action primary disabled={busy || !loaded} onPress={() => void run(async () => { setData(await api.saveGlossary(projectId, data)); close(); })}>Lưu thuật ngữ</Action>
-  </Sheet>;
+    <Action primary disabled={busy || !loaded || !!source.trim() || !!target.trim()} onPress={() => void run(async () => { setData(await api.saveGlossary(projectId, data)); close(); })}>Lưu thuật ngữ</Action>
+  </View>;
+  return embedded ? content : <Sheet title="Tên riêng và thuật ngữ" visible close={() => { if (!busy) close(); }}>{content}</Sheet>;
 }

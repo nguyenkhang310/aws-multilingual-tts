@@ -13,6 +13,8 @@ function usePlaybackState() {
   const { setNotice, history } = useStudio();
   const player = useAudioPlayer(null, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
+  const queueRef = useRef<Recording[]>([]);
+  const finished = useRef<string | null>(null);
   const [current, setCurrent] = useState<Recording | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [speechProgress, setSpeechProgress] = useState(0);
@@ -33,6 +35,7 @@ function usePlaybackState() {
   }, [player]);
   const clear = useCallback((id?: string) => {
     if (id && currentRef.current?.jobId !== id) return;
+    queueRef.current = [];
     stop(); currentRef.current = null; setCurrent(null); setSpeechProgress(0); player.replace(null);
   }, [player, stop]);
   useEffect(() => {
@@ -101,7 +104,8 @@ function usePlaybackState() {
       if (id === token.current) { speechLoadingRef.current = false; setSpeechLoading(false); }
     }
   }, [setNotice]);
-  const play = useCallback(async (record: Recording) => {
+  const start = useCallback(async (record: Recording) => {
+    finished.current = null;
     stop(); currentRef.current = record; setCurrent(record); setSpeechProgress(0);
     try {
       if (record.audioUrl) {
@@ -109,13 +113,27 @@ function usePlaybackState() {
       } else await speak(record);
     } catch { setNotice('Không phát được âm thanh. Bạn hãy thử lại.'); }
   }, [player, speak, stop, setNotice]);
+  const play = useCallback(async (record: Recording) => {
+    queueRef.current = [];
+    await start(record);
+  }, [start]);
+  const playQueue = useCallback(async (items: Recording[]) => {
+    const record = items[0];
+    if (!record) return;
+    const request = ++token.current;
+    const job = await api.job(record.jobId);
+    if (request !== token.current) return;
+    if (job.status !== 'DONE' || !job.audioUrl) throw new Error('Đoạn này chưa có âm thanh. Hãy làm mới.');
+    queueRef.current = items;
+    await start({ ...record, ...job });
+  }, [start]);
   const toggle = async () => {
     const record = currentRef.current;
     if (!record) return;
     if (record.audioUrl) {
       if (status.error && !DEMO) {
         const request = token.current;
-        try { const job = await api.job(record.jobId); if (request === token.current) await play({ ...record, ...job }); }
+        try { const job = await api.job(record.jobId); if (request === token.current) await start({ ...record, ...job }); }
         catch { setNotice('Chưa làm mới được liên kết. Hãy tải lại danh sách bản thu.'); }
         return;
       }
@@ -127,12 +145,27 @@ function usePlaybackState() {
     } else if (speaking || speechLoadingRef.current) stop();
     else { try { await speak(record); } catch { setNotice('Không phát được giọng đọc trên máy.'); } }
   };
-  const skip = (direction: number) => {
-    const queue = history.filter(r => r.status === 'DONE');
+  const skip = useCallback(async (direction: number) => {
+    const story = queueRef.current.length > 0;
+    const queue = story ? queueRef.current : history.filter(r => r.status === 'DONE');
     if (!queue.length) return;
     const index = queue.findIndex(r => r.jobId === currentRef.current?.jobId);
-    void play(queue[(Math.max(0, index) + direction + queue.length) % queue.length]);
-  };
+    const next = story ? index + direction : (Math.max(0, index) + direction + queue.length) % queue.length;
+    const record = queue[next];
+    if (!record) return;
+    const request = ++token.current;
+    try {
+      const job = record.local || DEMO ? record : await api.job(record.jobId);
+      if (request !== token.current) return;
+      if (job.status !== 'DONE' || (!DEMO && !job.audioUrl)) throw new Error();
+      await start({ ...record, ...job });
+    } catch { setNotice('Chưa mở được bản thu tiếp theo. Hãy thử lại.'); }
+  }, [history, start, setNotice]);
+  useEffect(() => {
+    if (autoPlay.current || !status.didJustFinish || repeat || !queueRef.current.length || finished.current === current?.jobId) return;
+    finished.current = current?.jobId ?? null;
+    void skip(1);
+  }, [status.didJustFinish, repeat, current?.jobId, skip]);
   const seek = (value: number) => {
     if (current?.audioUrl && status.isLoaded) void player.seekTo(value).catch(() => setNotice('Chưa tua được âm thanh.'));
   };
@@ -154,7 +187,7 @@ function usePlaybackState() {
       shareLock.current = false; setSharing(false);
     }
   };
-  return { current, playing: current?.audioUrl ? status.playing : speaking, play, toggle, stop, clear, seek, skip, repeat, setRepeat, share, sharing,
+  return { current, playing: current?.audioUrl ? status.playing : speaking, play, playQueue, toggle, stop, clear, seek, skip, repeat, setRepeat, share, sharing,
     position: current?.audioUrl ? status.currentTime : speechProgress * duration(current?.text ?? '', current?.speed),
     total: current?.audioUrl ? status.duration : duration(current?.text ?? '', current?.speed),
     canSeek: !!current?.audioUrl && status.isLoaded, loading: current?.audioUrl ? !status.error && (!status.isLoaded || status.isBuffering) : speechLoading };

@@ -1,8 +1,30 @@
 import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
-import { AppState, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { AppState, Keyboard, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { useStudio } from '../state/Studio';
-import { Glass, Label } from './ui';
+import { Glass, Icon, Label, SearchField } from './ui';
+import { normalize } from '../lib/model';
+
+export function StoryChoices({ items, value, onChange, search = false }: {
+  items: { value: string; label: string }[]; value: string; onChange: (value: string) => void; search?: boolean;
+}) {
+  const { colors } = useStudio();
+  const [query, setQuery] = useState('');
+  const visible = items.filter(item => normalize(item.label).includes(normalize(query.trim())));
+  return <View style={{ gap: 14 }}>
+    {search && <SearchField value={query} onChange={setQuery} label="Tìm trong danh sách" placeholder="Tìm kiếm" />}
+    <View style={{ borderWidth: 1, borderColor: colors.line, borderRadius: 22, overflow: 'hidden' }}>
+      {visible.map((item, index) => <Pressable key={item.value} accessibilityRole="radio" accessibilityLabel={item.label}
+        accessibilityState={{ checked: item.value === value }} onPress={() => { Keyboard.dismiss(); onChange(item.value); }}
+        style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', minHeight: 52, padding: 15, gap: 12,
+          backgroundColor: pressed || item.value === value ? colors.blueSoft : colors.surface,
+          borderTopWidth: index ? 1 : 0, borderColor: colors.line })}>
+        <Label size={16} style={{ flex: 1 }}>{item.label}</Label>{item.value === value && <Icon name="check" size={18} color={colors.blue} />}
+      </Pressable>)}
+    </View>
+    {!visible.length && <Label muted size={14}>Không tìm thấy kết quả</Label>}
+  </View>;
+}
 
 export function StoryCard({ children }: PropsWithChildren) {
   return <Glass style={storyStyles.card}>{children}</Glass>;

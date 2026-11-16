@@ -6,29 +6,24 @@ import StoryChapterEditor from './StoryChapterEditor';
 import StoryImport from './StoryImport';
 import FilePickerButton from '../components/FilePickerButton';
 import Select from '../components/Select';
+import { validChapterNumber } from '../../../shared/story-playback';
 import { languageNames } from '../../../shared/languages';
-import StoryProjectProgress from './StoryProjectProgress';
 import StoryGlossary from './StoryGlossary';
 import StoryTranslationBatch from './StoryTranslationBatch';
-import { Icon } from '../components/ui';
+import { Icon, Modal } from '../components/ui';
 
 const languages = ['vi-VN', 'en-US', 'ja-JP', 'ko-KR', 'cmn-CN'];
 const message = (error: unknown) => error instanceof Error ? error.message : 'Chưa hoàn tất thao tác.';
 const language = (code: string) => code === 'und' ? 'Chờ xác nhận ngôn ngữ' : languageNames[code] || code;
 const languageOptions = languages.map(value => ({ value, label: language(value) }));
-const noop = () => {};
-const dateOnly = (value: string) => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Chưa rõ ngày cập nhật' : new Intl.DateTimeFormat('vi-VN',
-    { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
-};
 
-export default function Audiobooks({ onChaptersChange = noop, onProjectChange = noop, selectedChapterId = null, onChapterChange = noop }: {
-  onChaptersChange?: (chapters: StoryChapter[]) => void;
-  onProjectChange?: (title: string | null) => void;
-  selectedChapterId?: string | null;
-  onChapterChange?: (id: string | null) => void;
-}) {
+
+export default function Audiobooks() {
+  const [panel, setPanel] = useState<'new' | 'settings' | 'import' | 'chapter' | 'glossary' | 'translate' | null>(null);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [dialogBusy, setDialogBusy] = useState(false), [dialogDirty, setDialogDirty] = useState(false);
+  const [chapterBusy, setChapterBusy] = useState(false);
   const [projects, setProjects] = useState<StoryProject[]>([]);
   const [project, setProject] = useState<StoryProject | null>(null);
   const [chapters, setChapters] = useState<StoryChapter[]>([]);
@@ -41,39 +36,32 @@ export default function Audiobooks({ onChaptersChange = noop, onProjectChange = 
   const [chapterNumber, setChapterNumber] = useState(1);
   const [createCover, setCreateCover] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
-  const editor = useRef<HTMLDivElement>(null);
   const locked = useRef(false);
+  const activeProject = useRef<string | null>(null);
+  const request = useRef(0), listRequest = useRef(0), mounted = useRef(true);
+  useEffect(() => { mounted.current = true; request.current++; listRequest.current++; return () => { mounted.current = false; }; }, []);
   const refreshedCovers = useRef(new Set<string>());
   const coverRefreshes = useRef(new Map<string, Promise<void>>());
   const [unavailableCovers, setUnavailableCovers] = useState(new Set<string>());
   const [error, setError] = useState('');
 
-  useEffect(() => { onProjectChange(project?.title ?? null); }, [project?.title, onProjectChange]);
-  useEffect(() => {
-    const target = editor.current;
-    const container = target?.closest<HTMLElement>('.route-view');
-    if (!chapter || !target || !container) return;
-    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-    const reduced = document.documentElement.dataset.motion === 'reduced' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    container.scrollTo({ top, behavior: reduced ? 'auto' : 'smooth' });
-  }, [chapter?.chapterId]);
-  useEffect(() => () => onProjectChange(null), [onProjectChange]);
-
-  async function reloadProjects() { setProjects(await storyApi.projects()); }
+  async function reloadProjects() {
+    const version = ++listRequest.current;
+    const items = await storyApi.projects();
+    if (mounted.current && version === listRequest.current) setProjects(items);
+  }
   async function reloadChapters(id: string) {
+    const version = ++request.current;
     const [details, items] = await Promise.all([storyApi.project(id), storyApi.chapters(id)]);
-    setProject(details); setChapters(items); onChaptersChange(items);
+    if (!mounted.current || version !== request.current || activeProject.current !== id) return;
+    setProject(details); setChapters(items);
   }
-  useEffect(() => {
-    if (!selectedChapterId || selectedChapterId === chapter?.chapterId) return;
-    if (chapterDirty && !window.confirm('Bỏ thay đổi chưa lưu của chương này?')) { onChapterChange(chapter?.chapterId ?? null); return; }
-    setChapter(chapters.find(item => item.chapterId === selectedChapterId) ?? null); setChapterDirty(false);
-  }, [selectedChapterId, chapters, chapter?.chapterId, chapterDirty, onChapterChange]);
   function selectChapter(item: StoryChapter | null, force = false) {
+    if (chapterBusy) return false;
     if (!force && chapterDirty && !window.confirm('Bỏ thay đổi chưa lưu của chương này?')) return false;
-    setChapter(item); setChapterDirty(false); onChapterChange(item?.chapterId ?? null); return true;
+    setChapter(item); setChapterDirty(false); return true;
   }
-  useEffect(() => { void reloadProjects().catch(err => setError(message(err))); }, []);
+  useEffect(() => { void reloadProjects().catch(err => setError(message(err))).finally(() => setLoading(false)); }, []);
 
   async function run(action: () => Promise<void>) {
     if (locked.current) return;
@@ -83,8 +71,9 @@ export default function Audiobooks({ onChaptersChange = noop, onProjectChange = 
     finally { locked.current = false; setBusy(false); }
   }
   async function open(item: StoryProject) {
-    if (!selectChapter(null)) return;
-    setChapters([]); onChaptersChange([]); setProject(item);
+    if (!mounted.current || !selectChapter(null)) return;
+    activeProject.current = item.projectId;
+    setChapters([]); setProject(item);
     await reloadChapters(item.projectId);
   }
   async function refreshCover(item: StoryProject) {
@@ -105,6 +94,18 @@ export default function Audiobooks({ onChaptersChange = noop, onProjectChange = 
     coverRefreshes.current.set(key, refresh);
     return refresh;
   }
+  function leaveProject() {
+    activeProject.current = null; request.current++; setProject(null);
+  }
+  const panelDirty = dialogDirty || (panel === 'new' && (!!title.trim() || !!createCover)) || (panel === 'chapter' && !!chapterTitle.trim());
+  useEffect(() => {
+    const leave = (event: Event) => {
+      if (busy || dialogBusy) { event.preventDefault(); return; }
+      if (panelDirty && !window.confirm('Bỏ thay đổi chưa lưu?')) event.preventDefault();
+    };
+    window.addEventListener('tts:before-navigate', leave);
+    return () => window.removeEventListener('tts:before-navigate', leave);
+  }, [busy, dialogBusy, panelDirty]);
   function uploadCover(item: StoryProject, file: File) {
     void run(async () => {
       const updated = await storyApi.uploadCover(item, file);
@@ -120,130 +121,108 @@ export default function Audiobooks({ onChaptersChange = noop, onProjectChange = 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  return <div className="story-layout">
-    <section hidden={!!project} className="surface story-panel">
-      <div className="story-actions"><h2>Truyện của bạn</h2>
-        <small className="story-note">Lưu backup trước khi kết thúc Lab.</small></div>
-      {error && <p role="alert" className="inline-error">{error}</p>}
-      <details className="story-create"><summary>Thêm truyện</summary>
-      <div className="story-fields">
-        <label>Tên truyện<input value={title} maxLength={120} onChange={event => setTitle(event.target.value)} /></label>
-        <div className="story-field"><span>Ngôn ngữ gốc</span>
-          <Select label="Ngôn ngữ gốc" value={sourceLang} onValueChange={setSourceLang}
-            options={[{ value: 'auto', label: 'Tự nhận diện khi nhập chương' }, ...languageOptions]} /></div>
-        <div className="story-field"><span>Ngôn ngữ đích</span>
-          <Select label="Ngôn ngữ đích" value={targetLang} onValueChange={setTargetLang} options={languageOptions} /></div>
-        <div className="story-cover-select"><span>Ảnh bìa (không bắt buộc)</span>
-          <FilePickerButton label={createCover ? 'Chọn ảnh khác' : 'Chọn ảnh bìa'} accept="image/jpeg,image/png"
-            disabled={busy} onFiles={files => {
-              const file = files[0];
-              if (!file) return;
-              try { checkedStoryCoverType(file.type, file.size); setCreateCover(file); setError(''); }
-              catch (err) { setCreateCover(null); setError(message(err)); }
-            }} />
-          {createCover && <small>{createCover.name} · {(createCover.size / 1024 / 1024).toFixed(1)} MiB</small>}
-          <small>JPEG hoặc PNG, tối đa 5 MiB.</small>
-        </div>
-      </div>
-      <div className="story-actions"><button className="primary-button" disabled={busy || !title.trim()} onClick={() => void run(async () => {
-        const selectedCover = createCover;
-        const item = await storyApi.createProject(title, sourceLang === 'auto' ? 'und' : sourceLang, targetLang);
-        setTitle(''); setCreateCover(null); await reloadProjects(); await open(item);
-        if (selectedCover) {
-          try { setProject(await storyApi.uploadCover(item, selectedCover)); await reloadProjects(); }
-          catch (err) { setError(`Dự án đã tạo nhưng chưa lưu được ảnh bìa: ${message(err)}`); }
-        }
-      })}>Tạo truyện</button></div>
-      </details>
-    <div className="story-restore" aria-label="Khôi phục dự án">
-      <strong>Khôi phục backup</strong>
-        <FilePickerButton label="Chọn file backup" accept=".json,application/json" disabled={busy} onFiles={files => {
-          const file = files[0];
-          if (!file) return;
-          void run(async () => {
-            if (file.size > 20 * 1024 * 1024) throw new Error('Backup tối đa 20 MB.');
+  function cover(item: StoryProject, large = false) {
+    return <div className={`story-book-cover ${large ? 'large' : ''}`}>
+      {item.cover && !unavailableCovers.has(`${item.projectId}:${item.cover.updatedAt}`)
+        ? <img src={item.cover.url} alt={`Bìa ${item.title}`} onError={() => void refreshCover(item)} />
+        : <><Icon name="book" size={large ? 42 : 32} /><span>{item.title}</span></>}
+    </div>;
+  }
+  const filtered = projects.filter(item => item.title.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi')));
+  return <div className="story-layout" aria-busy={busy || loading}>
+    {error && <div role="alert" className="inline-error">{error}<button disabled={busy} onClick={() => void run(() => project ? reloadChapters(project.projectId) : reloadProjects())}>Tải lại</button></div>}
+    {!project ? <>
+      <header className="story-library-header">
+        <div><h2>Thư viện truyện</h2><span>{projects.length} truyện</span></div>
+        <button className="primary-button" disabled={busy} onClick={() => setPanel('new')}><Icon name="plus" size={18} />Thêm truyện</button>
+      </header>
+      <div className="story-library-tools"><label className="story-search"><Icon name="search" size={18} />
+        <input aria-label="Tìm truyện" placeholder="Tìm truyện" value={query} onChange={event => setQuery(event.target.value)} /></label>
+        <FilePickerButton label="Nhập bản sao lưu" accept=".json,application/json" disabled={busy} onFiles={files => {
+          const file = files[0]; if (!file) return;
+          void run(async () => { if (file.size > 20 * 1024 * 1024) throw new Error('Bản sao lưu tối đa 20 MB.');
             const backup = checkedBackup(JSON.parse(await file.text()));
-            try {
-              const imported = await storyApi.importProject(backup);
-              await open(imported);
-            } finally { await reloadProjects(); }
+            try { await open(await storyApi.importProject(backup)); } finally { await reloadProjects(); }
           });
         }} />
-    </div>
-      <ul className="story-list story-project-list">{projects.map(item => <li key={item.projectId}>
-        <div className="story-project-card"><div className="story-cover-thumb">
-          {item.cover && !unavailableCovers.has(`${item.projectId}:${item.cover.updatedAt}`)
-            ? <img src={item.cover.url} alt={`Ảnh bìa ${item.title}`} onError={() => void refreshCover(item)} />
-            : <Icon name="book" size={23} />}
-        </div><button aria-expanded={project?.projectId === item.projectId}
-          onClick={() => void run(() => open(item))}><strong>{item.title}</strong>
-          <span className="story-project-subtitle">{language(item.sourceLang)} → {language(item.targetLang)} · {dateOnly(item.updatedAt)}</span></button></div>
-      </li>)}</ul>
-    </section>
-    {project && <section className="surface story-panel">
-      <div className="story-actions"><h2>{project.title}</h2><button onClick={() => { if (!selectChapter(null)) return; setProject(null); onChaptersChange([]); }}>Truyện của bạn</button></div>
-      <StoryProjectProgress chapters={chapters} />
-      <details className="story-project-settings"><summary>Tùy chọn truyện</summary>
-      <div className="story-cover-detail"><div className="story-cover-large">
-        {project.cover && !unavailableCovers.has(`${project.projectId}:${project.cover.updatedAt}`)
-          ? <img src={project.cover.url} alt={`Ảnh bìa ${project.title}`} onError={() => void refreshCover(project)} />
-          : <Icon name="book" size={30} />}
-      </div><div><strong>Ảnh bìa</strong><small>JPEG hoặc PNG · tối đa 5 MiB</small>
-        <FilePickerButton label={project.cover ? 'Thay ảnh bìa' : 'Thêm ảnh bìa'} accept="image/jpeg,image/png"
-          disabled={busy} onFiles={files => { if (files[0]) uploadCover(project, files[0]); }} />
-        {project.cover && <button className="secondary-button story-danger" disabled={busy} onClick={() => void run(async () => {
-          if (!window.confirm('Xóa ảnh bìa của dự án này?')) return;
-          const updated = await storyApi.deleteCover(project); setProject(updated); await reloadProjects();
-        })}>Xóa ảnh bìa</button>}
-      </div></div>
-      <StoryGlossary key={project.projectId} projectId={project.projectId} />
-      <StoryTranslationBatch key={project.projectId} project={project} chapters={chapters} />
-      <div className="story-actions story-project-actions">
-        <button className="secondary-button" disabled={busy} onClick={() => void run(async () => {
-          const name = window.prompt('Tên truyện mới', project.title);
-          if (!name || name === project.title) return;
-          const updated = await storyApi.renameProject(project, name);
-          setProject(updated); await reloadProjects();
-        })}>Đổi tên</button>
-        <button className="secondary-button" disabled={busy} onClick={() => void run(async () => {
-          if (project.cover && !window.confirm('Ảnh bìa không nằm trong file backup. Sau khi nhập backup, bạn cần tải lại ảnh bìa. Tiếp tục xuất?')) return;
-          const backup = await storyApi.exportProject(project);
-          exported(backup, `audiobook-${project.projectId}.json`);
-        })}>Xuất backup</button>
-        <button className="secondary-button story-danger" disabled={busy} onClick={() => void run(async () => {
-          if (!window.confirm(`Xóa dự án “${project.title}” khỏi danh sách?`)) return;
-          await storyApi.deleteProject(project); setProject(null); selectChapter(null, true); onChaptersChange([]); await reloadProjects();
-        })}>Xóa dự án</button>
       </div>
-      </details>
-      <details className="story-create"><summary>Thêm chương trống</summary>
-      <div className="story-fields">
-        <label>Số chương<input type="number" min={1} max={100000} value={chapterNumber}
-          onChange={event => setChapterNumber(Number(event.target.value))} /></label>
-        <label>Tên chương<input value={chapterTitle} maxLength={120} onChange={event => setChapterTitle(event.target.value)} /></label>
-      </div>
-      {project.sourceLang === 'und' && <small>Nhập chương đầu tiên để xác nhận ngôn ngữ trước khi thêm chương thủ công.</small>}
-      <button className="primary-button" disabled={busy || project.sourceLang === 'und' || !chapterTitle.trim() || chapterNumber < 1}
-        onClick={() => void run(async () => {
-          const created = await storyApi.createChapter(project.projectId, chapterNumber, chapterTitle);
-          setChapterTitle(''); setChapterNumber(chapterNumber + 1);
-          await reloadChapters(project.projectId); selectChapter(created);
-        })}>Thêm chương</button>
-      </details>
-      <StoryImport project={project} onProjectUpdated={updated => {
-        setProject(updated); void reloadProjects().catch(err => setError(message(err)));
-      }} onImportStart={() => selectChapter(null)} onImported={created => {
-        if (created) selectChapter(created);
-        void reloadChapters(project.projectId).catch(err => setError(message(err)));
-      }} />
-    </section>}
-    {project && chapter && <div ref={editor} className="story-chapter-workspace"><StoryChapterEditor key={chapter.chapterId} chapter={chapter}
-      projectLang={project.sourceLang} targetLang={project.targetLang} onDirty={setChapterDirty}
-      onClose={() => selectChapter(null)}
-      onDelete={() => void run(async () => {
-        if (!window.confirm(`Xóa chương “${chapter.title}”?`)) return;
-        await storyApi.deleteChapter(chapter); selectChapter(null, true); await reloadChapters(project.projectId);
-      })}
-      onSaved={updated => { setChapter(updated); void reloadChapters(project.projectId).catch(err => setError(message(err))); }} /></div>}
+      {loading ? <p role="status" className="story-note">Đang tải thư viện…</p> : filtered.length ? <ul className="story-bookshelf">{filtered.map(item => <li key={item.projectId}>
+        <button className="story-book" disabled={busy} onClick={() => void run(() => open(item))}>
+          {cover(item)}<strong>{item.title}</strong><span>{item.chapterCount} chương · {language(item.sourceLang)}</span>
+        </button></li>)}</ul> : <div className="story-empty"><Icon name="book" size={42} /><h3>{query ? 'Không tìm thấy truyện' : 'Chưa có truyện'}</h3>
+          {!query && <button onClick={() => setPanel('new')}>Thêm truyện đầu tiên</button>}</div>}
+      <small className="story-note">Lưu bản sao trước khi kết thúc Lab.</small>
+    </> : chapter ? <>
+      <div className="story-detail-nav"><button disabled={chapterBusy} onClick={() => selectChapter(null)}><Icon name="chevron" size={15} />{project.title}</button>
+        <span>Chương {chapter.chapterNumber}</span></div>
+      <StoryChapterEditor key={chapter.chapterId} chapter={chapter} projectLang={project.sourceLang} targetLang={project.targetLang}
+        onDirty={setChapterDirty} onBusy={setChapterBusy} onClose={() => selectChapter(null)}
+        onDelete={() => void run(async () => { if (!window.confirm(`Xóa chương “${chapter.title}”?`)) return;
+          await storyApi.deleteChapter(chapter); selectChapter(null, true); await reloadChapters(project.projectId); })}
+        onSaved={updated => { setChapter(updated); void reloadChapters(project.projectId).catch(err => setError(message(err))); }} />
+    </> : <>
+      <div className="story-detail-nav"><button onClick={leaveProject}><Icon name="chevron" size={15} />Thư viện truyện</button>
+        <button aria-label="Tùy chọn truyện" onClick={() => setPanel('settings')}><Icon name="settings" size={19} /></button></div>
+      <header className="story-book-heading">{cover(project, true)}<div>
+        <h2>{project.title}</h2>
+        <p>{chapters.length} chương · {language(project.sourceLang)}</p>
+        <div className="story-actions"><button className="primary-button" disabled={busy} onClick={() => setPanel('import')}><Icon name="upload" size={18} />Nhập chương</button>
+          <button className="secondary-button" disabled={busy || project.sourceLang === 'und'} onClick={() => {
+            setChapterTitle(''); setChapterNumber(Math.max(0, ...chapters.map(item => item.chapterNumber)) + 1); setPanel('chapter');
+          }}>Viết chương</button></div>
+      </div></header>
+      <div className="story-section-heading"><h3>Danh sách chương</h3><button aria-label="Làm mới chương" disabled={busy} onClick={() => void run(() => reloadChapters(project.projectId))}><Icon name="repeat" size={18} /></button></div>
+      {chapters.length ? <ol className="story-chapters">{chapters.map(item => <li key={item.chapterId}>
+        <button onClick={() => selectChapter(item)}><span className="story-chapter-number">{String(item.chapterNumber).padStart(2, '0')}</span>
+          <span className="story-chapter-title"><strong>{item.title}</strong><small>{item.textLength ? `${item.textLength.toLocaleString('vi-VN')} ký tự` : 'Chưa có nội dung'}</small></span>
+          <Icon name="chevron" size={18} /></button>
+      </li>)}</ol> : <div className="story-empty"><Icon name="book" size={34} /><h3>Chưa có chương</h3></div>}
+    </>}
+    {panel && <Modal className="story-dialog" title={{ new: 'Thêm truyện', settings: 'Tùy chọn truyện', import: 'Nhập chương', chapter: 'Viết chương', glossary: 'Tên riêng và thuật ngữ', translate: 'Dịch nhiều chương' }[panel]}
+      dismissible={!busy && !dialogBusy} onClose={() => {
+        if (panelDirty && !window.confirm('Bỏ thay đổi chưa lưu?')) return;
+        setPanel(null);
+      }}><div className="story-dialog-body">
+      {error && <p role="alert" className="inline-error">{error}</p>}
+      {panel === 'new' && <form className="story-form" onSubmit={event => { event.preventDefault(); if (!title.trim()) return;
+        void run(async () => {
+          const selectedCover = createCover;
+          const item = await storyApi.createProject(title.trim(), sourceLang === 'auto' ? 'und' : sourceLang, targetLang);
+          setTitle(''); setCreateCover(null); setPanel(null); await reloadProjects(); await open(item);
+          if (selectedCover) { try { const updated = await storyApi.uploadCover(item, selectedCover);
+              setProject(current => current?.projectId === item.projectId ? updated : current); await reloadProjects(); }
+            catch (err) { setError(`Truyện đã tạo. Chưa lưu được ảnh bìa: ${message(err)}`); } }
+        });
+      }}><label>Tên truyện<input autoFocus required value={title} maxLength={120} onChange={event => setTitle(event.target.value)} /></label>
+        <div className="story-field"><span>Ngôn ngữ gốc</span><Select label="Ngôn ngữ gốc" value={sourceLang} onValueChange={setSourceLang} options={[{ value: 'auto', label: 'Tự nhận diện' }, ...languageOptions]} /></div>
+        <div className="story-field"><span>Ngôn ngữ bản dịch</span><Select label="Ngôn ngữ bản dịch" value={targetLang} onValueChange={setTargetLang} options={languageOptions} /></div>
+        <FilePickerButton label={createCover ? createCover.name : 'Thêm ảnh bìa'} accept="image/jpeg,image/png" disabled={busy} onFiles={files => {
+          const file = files[0]; if (!file) return; try { checkedStoryCoverType(file.type, file.size); setCreateCover(file); setError(''); } catch (err) { setError(message(err)); }
+        }} /><small>Ảnh JPEG/PNG · tối đa 5 MiB</small>
+        <button type="submit" className="primary-button" disabled={busy || !title.trim()}>Tạo truyện</button>
+      </form>}
+      {project && panel === 'chapter' && <form className="story-form" onSubmit={event => { event.preventDefault();
+        if (!chapterTitle.trim() || !validChapterNumber(chapterNumber)) return;
+        void run(async () => { const created = await storyApi.createChapter(project.projectId, chapterNumber, chapterTitle.trim());
+          await reloadChapters(project.projectId); selectChapter(created); setPanel(null); });
+      }}><label>Tên chương<input autoFocus required value={chapterTitle} maxLength={120} onChange={event => setChapterTitle(event.target.value)} /></label>
+        <label>Số chương<input required type="number" min={1} max={100000} step={1} value={chapterNumber || ''} onChange={event => setChapterNumber(Number(event.target.value))} /></label>
+        <button type="submit" className="primary-button" disabled={busy || !chapterTitle.trim() || !validChapterNumber(chapterNumber)}>Thêm chương</button></form>}
+      {project && panel === 'import' && <StoryImport project={project} onBusy={setDialogBusy} onDirty={setDialogDirty} onProjectUpdated={setProject} onImportStart={() => true}
+        onImported={(created, complete) => { if (complete) { setPanel(null); if (created) selectChapter(created); } void reloadChapters(project.projectId).catch(err => setError(message(err))); }} />}
+      {project && panel === 'glossary' && <StoryGlossary projectId={project.projectId} onBusy={setDialogBusy} onDirty={setDialogDirty} />}
+      {project && panel === 'translate' && <StoryTranslationBatch project={project} chapters={chapters} onBusy={setDialogBusy} />}
+      {project && panel === 'settings' && <div className="story-form">
+        <div className="story-cover-detail">{cover(project)}<FilePickerButton label="Đổi ảnh bìa" accept="image/jpeg,image/png" disabled={busy} onFiles={files => { if (files[0]) uploadCover(project, files[0]); }} /></div>
+        {project.cover && <button disabled={busy} onClick={() => void run(async () => { setProject(await storyApi.deleteCover(project)); await reloadProjects(); })}>Xóa ảnh bìa</button>}
+        <button disabled={busy} onClick={() => void run(async () => { const name = window.prompt('Tên truyện mới', project.title);
+          if (!name?.trim() || name === project.title) return; setProject(await storyApi.renameProject(project, name.trim())); await reloadProjects(); })}>Đổi tên truyện</button>
+        <button onClick={() => setPanel('translate')}>Dịch nhiều chương</button><button onClick={() => setPanel('glossary')}>Tên riêng và thuật ngữ</button>
+        <button disabled={busy} onClick={() => void run(async () => { exported(await storyApi.exportProject(project), `audiobook-${project.projectId}.json`); })}>Xuất bản sao lưu</button>
+        <small>Bản sao gồm nội dung và bản dịch; không gồm ảnh bìa hoặc MP3.</small>
+        <button className="story-danger" disabled={busy} onClick={() => void run(async () => { if (!window.confirm(`Xóa truyện “${project.title}”?`)) return;
+          await storyApi.deleteProject(project); leaveProject(); setPanel(null); selectChapter(null, true); await reloadProjects(); })}>Xóa truyện</button>
+      </div>}
+    </div></Modal>}
   </div>;
 }

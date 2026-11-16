@@ -266,6 +266,22 @@ App dùng chung `TextReview` cho bản dịch và chính tả, xếp một cột
 
 Người dùng yêu cầu mọi tính năng M5 bổ sung sau này tuân theo cùng ngôn ngữ thiết kế web/app: gọn, dễ hiểu và nhất quán với cách tổ chức ứng dụng iOS. Màn chính ưu tiên nội dung và một hành động chính; cài đặt, ảnh bìa, thuật ngữ, backup và thao tác hiếm dùng đưa vào sheet/details có nhãn rõ. Không thêm chấm trang trí, badge, mô tả quảng bá hoặc khối rỗng không có chức năng. Giữ thông báo thiết yếu về gửi ảnh trực tuyến, quota, dữ liệu mất khi hết Lab và lỗi xử lý; không xóa chúng để giảm chữ.
 
-App dùng các thành phần `ui`, `Sheet`, `layout` hiện có; chương chia Nội dung/Bản dịch/Âm thanh, giọng và sắc thái mở riêng, trình phát nằm trong sheet thay vì đẩy route dưới modal. Giữ safe area, bàn phím iOS/Android, cỡ chữ hệ thống, reflow màn hẹp/ngang, sáng/tối và giảm chuyển động. Khi bỏ nội dung chưa lưu phải có lựa chọn giữ/bỏ; polling không được thay bản dịch đang sửa. Browser/Expo export không thay thế kiểm native thật.
+App dùng các thành phần `ui`, `Sheet`, `layout` hiện có; chương chia Nội dung/Bản dịch/Âm thanh, giọng và sắc thái mở riêng, trình phát dùng chung theo mục 22; không đẩy route bên dưới modal đang mở. Giữ safe area, bàn phím iOS/Android, cỡ chữ hệ thống, reflow màn hẹp/ngang, sáng/tối và giảm chuyển động. Khi bỏ nội dung chưa lưu phải có lựa chọn giữ/bỏ; polling không được thay bản dịch đang sửa. Browser/Expo export không thay thế kiểm native thật.
 
 Web/app dùng `shared/story-client.ts` và `story-translation-run.ts` cho hợp đồng và điều phối dịch; wrapper từng nền tảng chỉ giữ upload ảnh hoặc tương tác hệ thống. Metadata dùng version/revision/CAS, không tạo job khi nhập/lưu chương hoặc duyệt dịch. Tạo audio phải xác nhận, `UNCERTAIN` không retry, lỗi không đổi provider. Root SAM truyền `GeminiTtsDailyCallLimit` đúng một lần cho cả TtsCore và Submit. Không gọi live/deploy từ yêu cầu merge và chỉnh UI này; bằng chứng mới ghi trong CHANGELOG M4.
+
+
+## 22. Audio Truyện — bố cục và phát âm thanh, 16/11/2026
+
+Người dùng yêu cầu thiết kế lại web/app theo ngôn ngữ Apple hiện tại, ưu tiên rõ ràng và dễ thao tác. Giữ luồng Thư viện → Truyện với danh sách chương → Chương; không lặp chương ở sidebar hoặc mở modal chương bên dưới modal phát. Cấu hình giọng, nhập chương và quản lý truyện là thao tác phụ, không ghép nhiều khung vào màn nghe. Nội dung dài cần wrap/scroll; số chương phải là số nguyên 1–100.000; cảnh báo khi bỏ thay đổi.
+
+Mọi đoạn Audio Truyện phải dùng trình phát chung của nền tảng, không tạo HTMLAudioElement/Expo AudioPlayer riêng trong hàng chương. Thanh nhỏ và màn phát lớn phản ánh cùng phiên; thu nhỏ không dừng tiếng. Hàng đợi theo thứ tự đoạn của cùng plan, đọc đủ pagination trước khi nghe; không tự bỏ qua đoạn lỗi/chưa hoàn tất hoặc chuyển sang lịch sử TTS thường. URL hết hạn phải lấy lại từ API; không lưu URL vào backup. Giữ quota, xác nhận tạo audio, trạng thái chưa rõ, duyệt bản dịch và thông báo Gemini trực tuyến.
+
+Dùng Liquid Glass có chừng mực cho điều khiển/điều hướng, không phủ kính nhiều lớp lên nội dung. Web giữ backdrop/motion và giảm chuyển động; app dùng GlassView hiện có khi hệ điều hành hỗ trợ. Expo web/build không chứng minh đã kiểm bàn phím, safe area hoặc kính trên thiết bị native thật. Bằng chứng mới chỉ bổ sung CHANGELOG M4; không tự gọi provider hay triển khai AWS trong yêu cầu thiết kế này.
+
+
+## 23. Kiểm tra điều hướng và đồng bộ Git — 16/11/2026
+
+Người dùng giao rà luồng rồi commit/push lên main và toàn bộ nhánh thành viên. Phản hồi tải truyện/chương phải gắn với phiên đang mở, không được mở lại màn vừa đóng; lưu lần đầu không đổi key làm khởi tạo lại màn soạn. Back ở app đi lần lượt Chương → Truyện → Thư viện → trang trước; nội dung chưa lưu cần giữ/bỏ rõ ràng. Đổi hash/Back trình duyệt web cũng qua kiểm tra rời trang, chọn lại trang hiện tại giữ nội dung. Đóng modal phục hồi focus không cuộn lệch trang. Khóa thao tác rời bảng đang lưu/dịch; tạm dừng trước khi đóng.
+
+Đồng bộ nhánh bằng fast-forward hoặc merge giữ lịch sử sau khi fetch và kiểm tra chênh lệch; không force-push hay ghi đè commit thành viên. Đây là quyền Git, không phải quyền triển khai AWS hoặc gọi provider thật. GUIDE cá nhân cập nhật sau commit và tiếp tục được ignore.

@@ -5,6 +5,8 @@ import { storyApi } from '../lib/story-api';
 import FilePickerButton from '../components/FilePickerButton';
 import Select from '../components/Select';
 import { languageNames } from '../../../shared/languages';
+import { Icon } from '../components/ui';
+import { validChapterNumber } from '../../../shared/story-playback';
 import { detectLanguage, type LanguageDetection } from '../lib/language-detection';
 
 type Draft = { name: string; title: string; number: number; order: number; text: string;
@@ -13,8 +15,9 @@ type Draft = { name: string; title: string; number: number; order: number; text:
 const languageOptions = ['vi-VN', 'en-US', 'ja-JP', 'ko-KR', 'cmn-CN', 'zh-TW']
   .map(value => ({ value, label: languageNames[value] }));
 
-export default function StoryImport({ project, onImported, onImportStart, onProjectUpdated }: {
-  project: StoryProject; onImported: (chapter?: StoryChapter) => void;
+export default function StoryImport({ project, onImported, onImportStart, onProjectUpdated, onBusy, onDirty }: {
+  project: StoryProject; onImported: (chapter?: StoryChapter, complete?: boolean) => void;
+  onBusy?: (value: boolean) => void; onDirty?: (value: boolean) => void;
   onImportStart?: () => void; onProjectUpdated: (item: StoryProject) => void;
 }) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -34,6 +37,10 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
     setConfirmed(project.sourceLang !== 'und');
   }, [project.projectId, project.sourceLang]);
 
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);
+  useEffect(() => { onDirty?.(drafts.length > 0); return () => onDirty?.(false); }, [drafts.length, onDirty]);
+  const invalid = drafts.some(d => !d.title.trim() || !validChapterNumber(d.number) || !Number.isInteger(d.order) || d.order < 0 || d.order > 100000);
+
   async function redetect(text: string) {
     const revision = ++detectionRevision.current;
     let found: LanguageDetection;
@@ -48,7 +55,7 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
   async function select(files: File[]) {
     if (!files.length || locked.current) return;
     if (files.length > 10) { setError('Mỗi lần chọn tối đa 10 file chương.'); return; }
-    locked.current = true; setBusy(true); setError(''); setDrafts([]);
+    locked.current = true; setBusy(true); setError('');
     try {
       const result: Draft[] = [];
       for (const file of files) {
@@ -62,7 +69,7 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
       if (currentProject.current.sourceLang === 'und') await redetect(result[0].text);
       setDrafts(result); setProgress('');
     } catch (err) { setError(err instanceof Error ? err.message : 'Chưa đọc được file.'); }
-    finally { locked.current = false; setBusy(false); }
+    finally { locked.current = false; setBusy(false); setProgress(''); }
   }
 
   function edit(index: number, change: Partial<Draft>) {
@@ -70,9 +77,10 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
   }
 
   async function saveAll() {
-    if (locked.current || !confirmed || !draftLang) return;
+    if (locked.current || !confirmed || !draftLang || invalid) return;
     locked.current = true; setBusy(true); setError('');
     let completed = 0;
+    let firstSaved: StoryChapter | undefined;
     onImportStart?.();
     try {
       if (currentProject.current.sourceLang === 'und') {
@@ -91,47 +99,50 @@ export default function StoryImport({ project, onImported, onImportStart, onProj
         }
         const saved = await storyApi.saveText(chapter, draft.text);
         completed++;
-        onImported(completed === 1 ? saved : undefined);
+        firstSaved ??= saved;
       }
       setDrafts([]); setProgress('Đã lưu các chương.');
+      onImported(firstSaved, true);
     } catch (err) {
-      setError(`${progress} · ${err instanceof Error ? err.message : 'Chưa lưu được.'} Các chương trước đó đã lưu được giữ lại.`);
+      setError(`Chưa lưu chương ${completed + 1}/${drafts.length}: ${err instanceof Error ? err.message : 'Chưa lưu được.'} Các chương trước đó đã lưu được giữ lại.`);
       setDrafts(items => items.slice(completed));
-      onImported();
+      onImported(undefined, false);
     } finally { locked.current = false; setBusy(false); }
   }
 
-  return <section className="surface story-panel" aria-label="Nhập nhiều chương">
-    <div className="story-actions story-import-heading"><h2>Nhập chương từ tài liệu</h2>
-      <div className="story-import-controls"><small>Tối đa 10 tệp</small>
-        <FilePickerButton label={busy ? 'Đang đọc…' : 'Nhập tệp'} multiple
-          accept=".txt,.md,.docx,.pdf,.jpg,.jpeg,.png,.webp" disabled={busy}
-          onFiles={files => { void select(files); }} /></div></div>
+  return <section className="story-import" aria-label="Nhập nhiều chương">
+    <div className={`story-file-picker ${drafts.length ? 'compact' : ''}`}>
+      <Icon name="upload" size={30} />
+      <FilePickerButton label={busy ? 'Đang đọc…' : drafts.length ? 'Chọn lại tệp' : 'Chọn tài liệu'} multiple
+        accept=".txt,.md,.docx,.pdf,.jpg,.jpeg,.png,.webp" disabled={busy} onFiles={files => { void select(files); }} />
+      <small>PDF, Word, TXT, ảnh · 50 MiB/tệp · tối đa 10 tệp</small>
+    </div>
     {error && <p role="alert" className="inline-error">{error}</p>}
     {progress && <p role="status">{progress}</p>}
     {!!drafts.length && <div className="story-field story-import-language"><span>Ngôn ngữ</span>
       <Select label="Ngôn ngữ chương" value={draftLang} onValueChange={value => { detectionRevision.current++; setDraftLang(value); setConfirmed(false); }}
-        options={[{ value: '', label: 'Chọn ngôn ngữ' }, ...languageOptions]} />
+        disabled={busy} options={[{ value: '', label: 'Chọn ngôn ngữ' }, ...languageOptions]} />
       {detected && <small role="status">{detected.status === 'detected'
         ? `Dự đoán: ${languageNames[detected.language || ''] || detected.language}. Hãy xác nhận.`
         : 'Chưa nhận diện chắc chắn. Hãy chọn ngôn ngữ thủ công.'}</small>}
       {!confirmed && <button className="secondary-button" disabled={!draftLang || busy} onClick={() => setConfirmed(true)}>Xác nhận ngôn ngữ</button>}
     </div>}
-    {!!drafts.length && <div className="story-import-drafts">{drafts.map((draft, index) => <details className="story-draft" key={`${draft.name}-${index}`}>
+    {!!drafts.length && <div className="story-import-drafts">{drafts.map((draft, index) => <details className="story-draft" open={drafts.length === 1} key={`${draft.name}-${index}`}>
       <summary><strong>Chương {String(draft.number).padStart(2, '0')} · {draft.title || 'Chưa đặt tên'}</strong></summary>
       <div className="story-draft-content"><small>{draft.name} · {draft.text.length.toLocaleString('vi-VN')} ký tự</small>
         <div className="story-fields">
-          <label>Tên chương<input maxLength={120} value={draft.title} onChange={event => edit(index, { title: event.target.value })} /></label>
-          <label>Số chương<input type="number" min={1} max={100000} value={draft.number}
+          <label>Tên chương<input disabled={busy} maxLength={120} value={draft.title} onChange={event => edit(index, { title: event.target.value })} /></label>
+          <label>Số chương<input disabled={busy} type="number" min={1} max={100000} value={draft.number}
             onChange={event => edit(index, { number: Number(event.target.value) })} /></label>
-          <label>Thứ tự<input type="number" min={0} max={100000} value={draft.order}
+          <label>Thứ tự<input disabled={busy} type="number" min={0} max={100000} value={draft.order}
             onChange={event => edit(index, { order: Number(event.target.value) })} /></label>
         </div>
         <details className="story-draft-preview"><summary>Xem nội dung</summary>
           <p className="story-preview">{draft.text.slice(0, 1000)}</p></details>
       </div>
     </details>)}</div>}
-    {!!drafts.length && <button className="primary-button" disabled={busy || !confirmed || drafts.some(d => !d.title.trim() || d.number < 1 || d.order < 0)}
+    {invalid && <p role="alert" className="inline-error">Nhập tên chương, số nguyên 1–100.000 và thứ tự 0–100.000.</p>}
+    {!!drafts.length && <button className="primary-button" disabled={busy || !confirmed || invalid}
       onClick={() => void saveAll()}>{busy ? 'Đang lưu…' : `Lưu ${drafts.length} chương`}</button>}
   </section>;
 }

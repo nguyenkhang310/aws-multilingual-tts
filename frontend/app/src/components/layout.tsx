@@ -35,7 +35,7 @@ export function Header({ title, left, right }: { title: string; left?: ReactNode
     <View style={styles.headerSide}>{right}</View>
   </View>;
 }
-export function PageScroll({ children, tabs = false, style, contentContainerStyle, ...props }: PropsWithChildren<ScrollViewProps & { tabs?: boolean; ref?: Ref<ComponentRef<typeof ScrollView>> }>) {
+export function PageScroll({ children, tabs = false, blurTarget = false, style, contentContainerStyle, ...props }: PropsWithChildren<ScrollViewProps & { tabs?: boolean; blurTarget?: boolean; ref?: Ref<ComponentRef<typeof ScrollView>> }>) {
   const { gutter, dockClearance } = useLayout();
   const { current } = usePlayback();
   const keyboard = useKeyboardState();
@@ -43,27 +43,28 @@ export function PageScroll({ children, tabs = false, style, contentContainerStyl
   const target = useRef<ComponentRef<typeof View>>(null);
   const { register } = useBlurScene();
   useEffect(() => {
-    if (Platform.OS === 'android' && tabs && focused) return register?.(target);
-  }, [tabs, focused, register]);
+    if (Platform.OS === 'android' && (tabs || blurTarget) && focused) return register?.(target);
+  }, [tabs, blurTarget, focused, register]);
   const content = <ScrollView {...props} style={[{ flex: 1, minHeight: 0 }, style]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
     contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustKeyboardInsets={false}
     showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content,
       { paddingHorizontal: gutter, paddingBottom: tabs && !keyboard.visible ? dockClearance + (current ? 78 : 0) : 24 }, contentContainerStyle]}>
     {children}
   </ScrollView>;
-  return Platform.OS === 'android' && tabs ? <BlurTargetView ref={target} style={{ flex: 1, minHeight: 0 }}>{content}</BlurTargetView> : content;
+  return Platform.OS === 'android' && (tabs || blurTarget) ? <BlurTargetView ref={target} style={{ flex: 1, minHeight: 0 }}>{content}</BlurTargetView> : content;
 }
-export function Page({ children, title, tabs = false, close = false, ...scrollProps }: PropsWithChildren<ScrollViewProps & {
-  title: string; tabs?: boolean; close?: boolean; ref?: Ref<ComponentRef<typeof ScrollView>>;
+export function Page({ children, title, tabs = false, close = false, onClose, footer, ...scrollProps }: PropsWithChildren<ScrollViewProps & {
+  title: string; tabs?: boolean; blurTarget?: boolean; close?: boolean; onClose?: () => void; footer?: ReactNode; ref?: Ref<ComponentRef<typeof ScrollView>>;
 }>) {
   const keyboard = useKeyboardState();
   return <ScreenFrame bottom={!tabs && !keyboard.visible}><KeyboardArea>
-    {close ? <Header title={title} right={<Circle name="close" label={`Đóng ${title.toLowerCase()}`} onPress={() => router.canGoBack() ? router.back() : router.replace('/')} />} /> : null}
+    {close ? <Header title={title} left={<Circle name="back" label={`Quay lại từ ${title.toLowerCase()}`} onPress={onClose ?? (() => router.canGoBack() ? router.back() : router.replace('/'))} />} /> : null}
     <PageScroll tabs={tabs} {...scrollProps}>
       {!close && <View style={styles.heading}><Label size={32} weight="700" style={{ flex: 1, minWidth: 0 }}>{title}</Label>
         <Circle name="settings" label="Mở cài đặt" onPress={() => router.push('/settings')} /></View>}
       {children}
     </PageScroll>
+    {!keyboard.visible && footer}
   </KeyboardArea></ScreenFrame>;
 }
 const styles = StyleSheet.create({

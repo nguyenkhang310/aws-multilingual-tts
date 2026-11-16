@@ -11,7 +11,8 @@ test('Lưu metadata thành công rồi lỗi upload vẫn giữ bản nháp và 
     chapterNumber: 1, order: 1, revision: 1, contentRevision: null,
     segmentCount: 0, textLength: 0, sourceLang: 'vi-VN' };
   const updates = [], saves = [], reported = [];
-  storyApi.source = async () => 'Nội dung cũ';
+  let sourceLoads = 0;
+  storyApi.source = async () => { sourceLoads++; return 'Nội dung cũ'; };
   storyApi.segmentPage = async () => ({ items: [], nextCursor: null });
   storyApi.updateChapter = async (item, changes) => {
     assert.equal(item.revision, 1);
@@ -30,8 +31,12 @@ test('Lưu metadata thành công rồi lỗi upload vẫn giữ bản nháp và 
   });
   const save = () => [...env.mount.querySelectorAll('button')].find(item => item.textContent === 'Lưu chương');
   try {
-    await act(async () => { env.root.render(React.createElement(StoryChapterEditor,
-      { chapter, targetLang: 'vi-VN', onSaved: item => reported.push(item), onClose: () => {} })); await settle(); });
+    function Session() {
+      const [current, setCurrent] = React.useState(chapter);
+      return React.createElement(StoryChapterEditor, { chapter: current, targetLang: 'vi-VN',
+        onSaved: item => { reported.push(item); setCurrent(item); }, onClose: () => {} });
+    }
+    await act(async () => { env.root.render(React.createElement(Session)); await settle(); });
     await type(env.mount.querySelector('input[maxlength="120"]'), 'Tên mới');
     await type(env.mount.querySelector('textarea'), 'Nội dung mới');
     await act(async () => { save().click(); await settle(); });
@@ -42,6 +47,8 @@ test('Lưu metadata thành công rồi lỗi upload vẫn giữ bản nháp và 
     assert.equal(updates.length, 1);
     assert.equal(saves.length, 2);
     assert.equal(reported[0].revision, 3);
+    assert.equal(sourceLoads, 1);
+    assert.equal(env.mount.querySelector('textarea').value, 'Nội dung mới');
   } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
 });
 
@@ -50,7 +57,6 @@ test('Audio Truyện tạo và mở lại project/chapter từ backend', async (
   const { storyApi } = await env.load('lib/story-api.ts');
   const { default: Audiobooks } = await env.load('views/Audiobooks.tsx');
   const projects = [], chapters = [];
-  let sidebarChapters = [], sidebarTitle = null;
   storyApi.projects = async () => [...projects];
   storyApi.project = async () => ({ ...projects[0], chapterCount: chapters.length });
   storyApi.chapters = async () => [...chapters];
@@ -87,59 +93,70 @@ test('Audio Truyện tạo và mở lại project/chapter từ backend', async (
     element.dispatchEvent(new env.win.Event('input', { bubbles: true })); await settle();
   });
   const button = label => [...env.mount.querySelectorAll('button')].find(item => item.textContent.trim() === label);
+  const { storyTranslationApi } = await env.load('lib/story-api.ts');
+  storyTranslationApi.approvedOrNull = async () => null;
   try {
-    await act(async () => { env.root.render(React.createElement(Audiobooks,
-      { onChaptersChange: items => { sidebarChapters = items; },
-        onProjectChange: title => { sidebarTitle = title; } })); await settle(); });
+    await act(async () => { env.root.render(React.createElement(Audiobooks)); await settle(); });
+    assert.ok(button('Thêm truyện'));
+    assert.equal(env.mount.querySelector('form'), null, 'Thư viện không chứa form đang mở');
+    assert.match(env.mount.querySelector('.story-note').textContent, /trước khi kết thúc Lab/);
+    await click(button('Thêm truyện'));
     assert.match(env.mount.querySelector('[aria-label="Ngôn ngữ gốc"]').textContent, /Tiếng Việt/);
-    assert.match(env.mount.querySelector('[aria-label="Ngôn ngữ đích"]').textContent, /Tiếng Việt/);
-    assert.ok(env.mount.querySelector('.story-restore'));
-    assert.ok(env.mount.querySelector('.story-cover-select'), 'form tạo dự án có ô ảnh bìa tùy chọn');
-    assert.match(env.mount.querySelector('.story-note').textContent, /backup trước khi kết thúc Lab/);
-    assert.equal(button('Nhập tệp'), undefined);
-    assert.doesNotMatch(env.mount.textContent, /Dữ liệu nằm ở backend/);
-    await type(env.mount.querySelector('.story-fields input'), 'Truyện của tôi');
+    await type(env.mount.querySelector('.story-form input'), 'Truyện của tôi');
     await click(button('Tạo truyện'));
-    assert.equal(sidebarTitle, 'Truyện của tôi');
-    assert.match(env.mount.textContent, /Truyện của tôi/);
-    assert.match(env.mount.querySelector('.story-project-subtitle').textContent, /Tiếng Việt → Tiếng Việt/);
-    assert.ok(env.mount.querySelector('.story-cover-thumb'), 'danh sách có khung thumbnail/placeholder');
-    assert.ok(env.mount.querySelector('.story-cover-large'), 'chi tiết có khung ảnh bìa lớn');
-    assert.ok(button('Thêm ảnh bìa'));
-    const coverInput = [...env.mount.querySelectorAll('input[type="file"]')].find(input => input.accept.includes('image/png') &&
-      input.closest('.story-cover-detail'));
+    assert.match(env.mount.querySelector('.story-book-heading').textContent, /Truyện của tôi/);
+    assert.equal(env.mount.querySelector('dialog'), null, 'Lưu xong đóng form');
+    await click(env.mount.querySelector('[aria-label="Tùy chọn truyện"]'));
+    const coverInput = env.mount.querySelector('input[type="file"]');
     Object.defineProperty(coverInput, 'files', { configurable: true, value: [new File(['png'], 'cover.png', { type: 'image/png' })] });
     await act(async () => { coverInput.dispatchEvent(new env.win.Event('change', { bubbles: true })); await settle(); });
-    assert.equal(env.mount.querySelector('.story-cover-thumb img')?.getAttribute('src'), 'https://signed.test/cover');
-    assert.equal(env.mount.querySelector('.story-cover-large img')?.getAttribute('src'), 'https://signed.test/cover');
-    const imageError = [...env.mount.querySelectorAll('.story-cover-thumb img')][0];
-    await act(async () => { imageError.dispatchEvent(new env.win.Event('error')); await settle(); });
-    assert.equal(env.mount.querySelector('.story-cover-thumb img')?.getAttribute('src'), 'https://signed.test/cover-renewed');
-    const warnings = [];
-    env.win.confirm = message => { warnings.push(String(message)); return false; };
-    await click(button('Xuất backup'));
-    assert.match(warnings[0], /Ảnh bìa không nằm trong file backup/);
-    env.win.confirm = () => true;
-    await act(async () => { env.mount.querySelector('.story-cover-large img').dispatchEvent(new env.win.Event('error')); await settle(); });
-    assert.equal(env.mount.querySelector('.story-cover-large img'), null, 'URL hỏng sau lần gia hạn hiện placeholder, không gọi lặp');
+    const img = () => env.mount.querySelector('.story-book-heading img');
+    assert.equal(img()?.getAttribute('src'), 'https://signed.test/cover');
+    await act(async () => { img().dispatchEvent(new env.win.Event('error')); await settle(); });
+    assert.equal(img()?.getAttribute('src'), 'https://signed.test/cover-renewed');
+    await act(async () => { img().dispatchEvent(new env.win.Event('error')); await settle(); });
+    assert.equal(img(), null, 'Link lỗi hai lần hiện bìa thay thế, không tải lặp');
     await click(button('Xóa ảnh bìa'));
-    assert.ok(button('Nhập tệp'), 'chỉ hiện nút nhập chương sau khi chọn dự án');
-    const fields = env.mount.querySelectorAll('.story-fields');
-    await type(fields[1].querySelectorAll('input')[1], 'Mở đầu');
+    await click(env.mount.querySelector('[aria-label="Đóng cửa sổ"]'));
+    await click(button('Viết chương'));
+    const inputs = env.mount.querySelectorAll('.story-form input');
+    await type(inputs[0], 'Mở đầu');
+    await type(inputs[1], '0');
+    assert.equal(button('Thêm chương').disabled, true);
+    await type(inputs[1], '1');
     await click(button('Thêm chương'));
-    assert.match(env.mount.textContent, /Mở đầu/);
     assert.ok(env.mount.querySelector('.story-editor'));
-    assert.ok(env.mount.querySelector('.story-audio-workspace'));
-    assert.match(env.mount.querySelector('.story-editor summary').textContent, /Thay đổi ngôn ngữ nguồn/);
-    assert.equal(env.mount.querySelector('.story-chapter-list'), null);
-    assert.equal(env.mount.querySelector('[aria-label="Nhân vật và quan hệ"]'), null);
+    assert.equal(env.mount.querySelector('.story-book-heading'), null, 'Trình sửa là một màn riêng');
+    await click(button('Đóng'));
+    assert.match(env.mount.querySelector('.story-chapters').textContent, /Mở đầu/);
     await act(async () => { env.root.render(null); await settle(); });
-    await act(async () => { env.root.render(React.createElement(Audiobooks,
-      { onChaptersChange: items => { sidebarChapters = items; },
-        onProjectChange: title => { sidebarTitle = title; } })); await settle(); });
-    const projectButton = [...env.mount.querySelectorAll('.story-list button')].find(item => item.textContent.includes('Truyện của tôi'));
-    await click(projectButton);
-    assert.equal(sidebarChapters[0].title, 'Mở đầu');
-    assert.equal(sidebarTitle, 'Truyện của tôi');
+    await act(async () => { env.root.render(React.createElement(Audiobooks)); await settle(); });
+    await click(env.mount.querySelector('.story-book'));
+    assert.match(env.mount.querySelector('.story-chapters').textContent, /Mở đầu/);
+  } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
+});
+
+
+test('Phản hồi tải truyện muộn không mở lại màn đã đóng', async () => {
+  const env = await environment();
+  const { storyApi } = await env.load('lib/story-api.ts');
+  const { default: Audiobooks } = await env.load('views/Audiobooks.tsx');
+  const book = { projectId: 'c'.repeat(32), title: 'Truyện tải chậm', sourceLang: 'vi-VN', targetLang: 'vi-VN', chapterCount: 0 };
+  let resolve;
+  storyApi.projects = async () => [book];
+  storyApi.project = () => new Promise(done => { resolve = done; });
+  storyApi.chapters = async () => [];
+  const button = label => [...env.mount.querySelectorAll('button')].find(item => item.textContent.trim() === label);
+  try {
+    await act(async () => { env.root.render(React.createElement(Audiobooks)); await settle(); });
+    await act(async () => { env.mount.querySelector('.story-book').click(); await settle(); });
+    assert.ok(env.mount.querySelector('.story-book-heading'));
+    await act(async () => { button('Thư viện truyện').click(); await settle(); });
+    await act(async () => { resolve(book); await settle(); });
+    assert.equal(env.mount.querySelector('.story-book-heading'), null);
+    assert.ok(env.mount.querySelector('.story-book'));
+    storyApi.project = async () => book;
+    await act(async () => { env.mount.querySelector('.story-book').click(); await settle(); });
+    assert.match(env.mount.querySelector('.story-book-heading').textContent, /Truyện tải chậm/);
   } finally { await act(async () => { env.root.unmount(); }); await env.close(); }
 });

@@ -63,6 +63,8 @@ export interface Job {
   cached?: boolean;
 }
 export interface HistoryItem extends Job {
+  title?: string;
+  storyChapterId?: string;
   text: string;
   lang: string;
   voice: string;

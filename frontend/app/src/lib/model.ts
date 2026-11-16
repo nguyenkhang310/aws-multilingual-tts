@@ -15,6 +15,7 @@ export interface Job {
   error?: string | { message?: string } | null;
 }
 export interface Recording extends Job {
+  title?: string; storyChapterId?: string;
   text: string; lang: string; voice: string; speed?: number; charCount: number; createdAt: string;
   local?: boolean;
 }

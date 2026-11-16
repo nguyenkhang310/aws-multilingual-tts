@@ -279,24 +279,39 @@ def ocr_overrides(enabled=None, model=None, daily_calls=None, parameter=None):
 
 
 @contextmanager
-def packaged_template(work, gemini_tts=False):
-    if not gemini_tts:
+def packaged_template(work, gemini_tts=False, voice_clone=False):
+    if not gemini_tts and not voice_clone:
         yield ROOT / "deployment/template.yaml"
         return
-    # CloudFormation package chỉ ZIP source; encoder phải là wheel Linux, kể cả máy build là macOS.
+    # Stage mã native đúng Linux/Python 3.12 trước khi CloudFormation package ZIP.
     with tempfile.TemporaryDirectory(prefix="tts-package-", dir=work) as temporary:
         stage = Path(temporary)
         source = ROOT / "backend/m2-trung-khang/synthesize"
-        target = stage / "synthesize"
-        shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "--only-binary=:all:", "--no-deps", "--no-compile",
-                                 "--platform", "manylinux2014_x86_64", "--python-version", "3.12", "--implementation", "cp", "--abi", "cp312",
-                                 "--target", str(target), "-r", str(source / "requirements.txt")], capture_output=True)
-        if result.returncode:
-            raise ValueError("Không đóng gói được encoder MP3 Linux. Kiểm tra pip và mạng; chưa tạo changeset.")
+        target = ROOT / "backend/m2-trung-khang/synthesize"
+        if gemini_tts:
+            target = stage / "synthesize"
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "--only-binary=:all:", "--no-deps", "--no-compile",
+                                     "--platform", "manylinux2014_x86_64", "--python-version", "3.12", "--implementation", "cp", "--abi", "cp312",
+                                     "--target", str(target), "-r", str(source / "requirements.txt")], capture_output=True)
+            if result.returncode:
+                raise ValueError("Không đóng gói được encoder MP3 Linux. Kiểm tra pip/mạng; chưa tạo changeset.")
+        layer = ROOT / "backend/m2-trung-khang/voice_clone_layer"
+        if voice_clone:
+            layer = stage / "voice_clone_layer"
+            python = layer / "python"
+            python.mkdir(parents=True)
+            requirements = ROOT / "backend/m2-trung-khang/scripts/voice_clone_requirements.txt"
+            wheel_args = ["--only-binary=:all:", "--no-compile", "--platform", "manylinux2014_x86_64",
+                          "--python-version", "3.12", "--implementation", "cp", "--abi", "cp312", "--target", str(python)]
+            for command in (["-r", str(requirements)], ["--no-deps", "vieneu==3.8.4"]):
+                result = subprocess.run([sys.executable, "-m", "pip", "install", *wheel_args, *command], capture_output=True)
+                if result.returncode:
+                    raise ValueError("Không đóng gói được layer VieNeu Linux/Python 3.12. Kiểm tra pip/mạng; chưa tạo changeset.")
         child = (ROOT / "backend/m2-trung-khang/infra/tts.yaml").read_text(encoding="utf-8")
         child = child.replace("CodeUri: ../synthesize", "CodeUri: " + json.dumps(str(target)))
         child = child.replace("CodeUri: ../voices", "CodeUri: " + json.dumps(str(ROOT / "backend/m2-trung-khang/voices")))
+        child = child.replace("ContentUri: ../voice_clone_layer", "ContentUri: " + json.dumps(str(layer)))
         (stage / "tts.yaml").write_text(child, encoding="utf-8")
         root = (ROOT / "deployment/template.yaml").read_text(encoding="utf-8")
         def location(match):
@@ -310,8 +325,25 @@ def packaged_template(work, gemini_tts=False):
         yield template
 
 
+def clone_model_ready(stack, prefix):
+    bucket = next((item.get("OutputValue") for item in stack.get("Outputs", [])
+                   if item.get("OutputKey") == "JobsBucketName"), None)
+    if not bucket:
+        raise ValueError("Chưa tìm thấy JobsBucketName; tạo stack cơ sở trước khi bật VieNeu")
+    try:
+        response = aws("s3", "get_object", payload={"Bucket": bucket, "Key": f"{prefix.strip('/')}/_READY.json"})
+        ready = json.loads(response["Body"].read())
+        response["Body"].close()
+    except Exception:
+        raise ValueError("Chưa có model VieNeu hoàn chỉnh trong JobsBucket; tải model lên trước khi bật.") from None
+    if ready.get("modelRevision") != "61b85e3d937fbbacb387714180e8182823512523" or \
+       ready.get("codecRevision") != "ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae" or not ready.get("files"):
+        raise ValueError("Model trong S3 không khớp revision VieNeu đã ghim; chưa tạo changeset.")
+
+
 def plan(daily_char_limit=None, *, gemini_ocr=None, ocr_model=None, ocr_daily_calls=None, gemini_parameter=None,
-         gemini_tts=None, tts_daily_calls=None, gemini_typo=None, gemini_model=None):
+         gemini_tts=None, tts_daily_calls=None, gemini_typo=None, gemini_model=None,
+         voice_clone=None, voice_clone_model_prefix=None, voice_clone_memory_mb=None):
     ocr = ocr_overrides(gemini_ocr, ocr_model, ocr_daily_calls, gemini_parameter)
     if gemini_typo is not None:
         if gemini_typo not in {"true", "false"}:
@@ -330,6 +362,18 @@ def plan(daily_char_limit=None, *, gemini_ocr=None, ocr_model=None, ocr_daily_ca
         if type(tts_daily_calls) is not int or not 1 <= tts_daily_calls <= 10000:
             raise ValueError("Hạn mức Gemini TTS/ngày từ 1 đến 10.000")
         ocr["GeminiTtsDailyCallLimit"] = str(tts_daily_calls)
+    if voice_clone is not None:
+        if voice_clone not in {"true", "false"}:
+            raise ValueError("--voice-clone phải là true hoặc false")
+        ocr["VoiceCloneEnabled"] = voice_clone
+    if voice_clone_model_prefix is not None:
+        if not re.fullmatch(r"[A-Za-z0-9/_-]{1,180}", voice_clone_model_prefix) or ".." in voice_clone_model_prefix:
+            raise ValueError("Prefix model VieNeu không hợp lệ")
+        ocr["VoiceCloneModelPrefix"] = voice_clone_model_prefix.strip("/")
+    if voice_clone_memory_mb is not None:
+        if type(voice_clone_memory_mb) is not int or not 2048 <= voice_clone_memory_mb <= 10240:
+            raise ValueError("Bộ nhớ VieNeu cần từ 2048 đến 10240 MiB")
+        ocr["VoiceCloneMemoryMb"] = str(voice_clone_memory_mb)
     if daily_char_limit is not None and (type(daily_char_limit) is not int or daily_char_limit < 1):
         raise ValueError("Hạn mức ký tự/ngày phải là số nguyên dương")
     state = read_state()
@@ -339,6 +383,12 @@ def plan(daily_char_limit=None, *, gemini_ocr=None, ocr_model=None, ocr_daily_ca
         raise ValueError("Stack chưa sẵn sàng; kiểm tra CloudFormation Events, không tự xóa hoặc tạo lại")
     change_type = "UPDATE" if stack else "CREATE"
     previous = {p["ParameterKey"]: p.get("ParameterValue", "") for p in (stack or {}).get("Parameters", [])}
+    clone_prefix = voice_clone_model_prefix or previous.get("VoiceCloneModelPrefix") or "voice-clone/vieneu-3.8.4"
+    clone_enabled = voice_clone == "true" or (voice_clone is None and previous.get("VoiceCloneEnabled") == "true")
+    if clone_enabled:
+        if not stack:
+            raise ValueError("Tạo stack cơ sở với VieNeu tắt, tải model vào JobsBucket rồi mới bật voice clone")
+        clone_model_ready(stack, clone_prefix)
     if gemini_ocr == "true" and not (gemini_parameter or previous.get("GeminiApiParameterName")):
         raise ValueError("Cần --gemini-parameter trỏ tới SSM chứa key trước khi bật đọc ảnh")
     if gemini_tts == "true" and not (gemini_parameter or previous.get("GeminiApiParameterName")):
@@ -351,7 +401,8 @@ def plan(daily_char_limit=None, *, gemini_ocr=None, ocr_model=None, ocr_daily_ca
     work.mkdir(exist_ok=True)
     packaged = work / "azure-packaged.yaml"
     bucket = artifact_bucket(account)
-    with packaged_template(work, gemini_tts == "true" or previous.get("GeminiTtsEnabled") == "true") as template:
+    package_gemini = gemini_tts == "true" or (gemini_tts is None and previous.get("GeminiTtsEnabled") == "true")
+    with packaged_template(work, package_gemini, clone_enabled) as template:
         aws("cloudformation", "package", "--template-file", str(template),
             "--s3-bucket", bucket, "--output-template-file", str(packaged), parse_json=False)
     overrides = {"TtsProvider": "azure", "AzureSpeechRegion": state["region"], "TtsApiParameterName": PARAMETER}
@@ -436,11 +487,14 @@ def main():
     parser.add_argument("--gemini-typo", choices=("true", "false"), help="Chỉ dùng với plan; bật/tắt gợi ý sửa chính tả")
     parser.add_argument("--gemini-model", help="Model Gemini cho sửa chính tả và các tính năng văn bản")
     parser.add_argument("--tts-daily-calls", type=int, help="Hạn mức request Gemini TTS/ngày, gồm từng đoạn và retry")
+    parser.add_argument("--voice-clone", choices=("true", "false"), help="Bật/tắt VieNeu nhại giọng trong changeset; model phải có sẵn trong JobsBucket")
+    parser.add_argument("--voice-clone-model-prefix", help="Prefix model riêng trong JobsBucket, không phải nội dung WAV")
+    parser.add_argument("--voice-clone-memory-mb", type=int, help="Bộ nhớ worker VieNeu; mặc định 3072 MiB")
     args = parser.parse_args()
     if args.daily_char_limit is not None and args.action != "plan":
         parser.error("--daily-char-limit chỉ dùng với plan")
-    if args.action != "plan" and any(value is not None for value in (args.gemini_ocr, args.ocr_model, args.ocr_daily_calls, args.gemini_parameter, args.gemini_tts, args.tts_daily_calls, args.gemini_typo, args.gemini_model)):
-        parser.error("Các tùy chọn Gemini chỉ dùng với plan")
+    if args.action != "plan" and any(value is not None for value in (args.gemini_ocr, args.ocr_model, args.ocr_daily_calls, args.gemini_parameter, args.gemini_tts, args.tts_daily_calls, args.gemini_typo, args.gemini_model, args.voice_clone, args.voice_clone_model_prefix, args.voice_clone_memory_mb)):
+        parser.error("Các tùy chọn tính năng chỉ dùng với plan")
     try:
         if args.action == "configure":
             configure(args.region)
@@ -450,7 +504,9 @@ def main():
             plan(args.daily_char_limit, gemini_ocr=args.gemini_ocr, ocr_model=args.ocr_model,
                  ocr_daily_calls=args.ocr_daily_calls, gemini_parameter=args.gemini_parameter,
                  gemini_tts=args.gemini_tts, tts_daily_calls=args.tts_daily_calls,
-                 gemini_typo=args.gemini_typo, gemini_model=args.gemini_model)
+                 gemini_typo=args.gemini_typo, gemini_model=args.gemini_model,
+                 voice_clone=args.voice_clone, voice_clone_model_prefix=args.voice_clone_model_prefix,
+                 voice_clone_memory_mb=args.voice_clone_memory_mb)
         else:
             {"apply": apply, "status": status}[args.action]()
     except urllib.error.HTTPError as error:

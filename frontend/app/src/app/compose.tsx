@@ -16,6 +16,7 @@ import PdfReader from '../components/PdfReader';
 import DocumentReview from '../components/DocumentReview';
 import ProviderPicker from '../components/ProviderPicker';
 import TextReview from '../components/TextReview';
+import VoiceCloneControls from '../components/VoiceCloneControls';
 import { DOCUMENT_MODES, type DocumentMode } from '../../../shared/vision';
 import { useStudio } from '../state/Studio';
 import { usePlayback } from '../state/Playback';
@@ -46,7 +47,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const [draft, setDraft] = mode === 'translation'
     ? [studio.translationDraft, studio.setTranslationDraft]
     : [studio.draft, studio.setDraft];
-  const { colors, isDark, lang, voice, speed, setSpeed, selectVoice, languages, loadingVoices, saveRecording, setNotice } = studio;
+  const { colors, isDark, lang, voice, speed, setSpeed, voiceClone, setVoiceClone, selectVoice, languages, loadingVoices, saveRecording, setNotice } = studio;
   const { play, stop } = usePlayback();
   const { gutter, usableHeight } = useLayout();
   const [sheet, setSheet] = useState<'voices' | 'settings' | 'source' | 'target' | 'ocr' | null>(null);
@@ -149,9 +150,9 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   const availableVoice = voiceLanguage?.voices.find(v => v.id === (mode === 'translation' ? selectedTargetVoice : voice));
   const styleOptions = expressionOptions(availableVoice?.styles, voiceLanguage?.autoEmotionEnabled);
   const style = styleOptions.some(item => item.value === selectedStyle) ? selectedStyle : 'neutral';
-  const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(voiceLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {}) };
+  const expression = { ...(style === 'neutral' ? {} : { style, ...(styleIntensity !== 1 ? { styleIntensity } : {}) }), ...(voiceLanguage?.provider === 'gemini' || voiceLanguage?.provider === 'vieneu' ? { provider: voiceLanguage.provider } : {}) };
   const previewKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([index, source, sourceLang, target]);
-  const approvalKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([previewKey(index, source, sourceLang), selectedTargetVoice, speed, expression]);
+  const approvalKey = (index: number, source: string, sourceLang = lang) => JSON.stringify([previewKey(index, source, sourceLang), selectedTargetVoice, speed, expression, voiceClone]);
   const finish = () => { locked.current = false; submitting.current = false; setBusy(false); setChecking(false); setStage(''); };
   const submit = async (input: Input, id: number, batchMode = false, index = selectedPart) => {
     if (submitting.current) return;
@@ -227,6 +228,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
   };
   const generate = async (index = selectedPart) => {
     const preprocessingStarted = ttsNow();
+    if (mode === 'translation' && studio.provider === 'vieneu') { setError('VieNeu hiện chỉ tạo giọng tiếng Việt trực tiếp; hãy chọn Azure hoặc Gemini cho Dịch và đọc.'); return; }
     if (voiceLanguage?.available === false) { setError('Chưa bật Gemini TTS ở máy chủ.'); return; }
     if (locked.current || languageLock.current || importLock.current) return;
     const currentDraft = draft;
@@ -247,8 +249,9 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
     try { checkedDocument(draft); } catch (reason) { setError((reason as Error).message); return; }
     const activeParts = splitDocument(draft, activeLanguage?.maxChars ?? MAX_CHARS);
     const activeExpression = activeVoice === (mode === 'translation' ? selectedTargetVoice : voice)
-      ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
-    const input: Input = { text: activeParts[index] ?? '', lang: sourceLang, voice: activeVoice, speed, translateTo: mode === 'translation' ? target : null, ...activeExpression };
+      ? expression : activeLanguage?.provider === 'gemini' || activeLanguage?.provider === 'vieneu' ? { provider: activeLanguage.provider } : {};
+    const activeClone = activeLanguage?.provider === 'vieneu' ? { voiceProfileId: activeVoice, voiceClone } : {};
+    const input: Input = { text: activeParts[index] ?? '', lang: sourceLang, voice: activeVoice, speed, translateTo: mode === 'translation' ? target : null, ...activeExpression, ...activeClone };
     const invalid = validate(input);
     if (invalid) { setError(invalid); return; }
     ttsTiming('frontend_preprocessing', preprocessingStarted, voiceLanguage?.provider ?? '', 'READY');
@@ -282,13 +285,15 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
     try { sourceLang = await readyLanguage(); } finally { languageLock.current = false; }
     if (!sourceLang || draftRef.current !== currentDraft || currentChoice !== languageChoiceRevision.current || currentProvider !== providerRef.current) return;
     const activeLanguage = languages.find(item => item.lang === (mode === 'translation' ? target : sourceLang));
+    if (mode === 'translation' && activeLanguage?.provider === 'vieneu') { setError('VieNeu hiện chỉ tạo giọng tiếng Việt trực tiếp; hãy chọn Azure hoặc Gemini cho Dịch và đọc.'); return; }
     const activeParts = splitDocument(draft, activeLanguage?.maxChars ?? MAX_CHARS);
     const activeVoice = mode === 'translation' ? selectedTargetVoice
       : activeLanguage?.voices.some(item => item.id === voice) ? voice : activeLanguage?.voices[0]?.id ?? '';
     const activeExpression = activeVoice === (mode === 'translation' ? selectedTargetVoice : voice)
-      ? expression : activeLanguage?.provider === 'gemini' ? { provider: 'gemini' } : {};
+      ? expression : activeLanguage?.provider === 'gemini' || activeLanguage?.provider === 'vieneu' ? { provider: activeLanguage.provider } : {};
+    const activeClone = activeLanguage?.provider === 'vieneu' ? { voiceProfileId: activeVoice, voiceClone } : {};
     if (mode === 'speech' && !checkSpelling) {
-      const inputs = activeParts.map((text, index) => ({ index, input: { text, lang: sourceLang, voice: activeVoice, speed, translateTo: null, ...activeExpression } })).filter(({ input }) => input.text.trim());
+      const inputs = activeParts.map((text, index) => ({ index, input: { text, lang: sourceLang, voice: activeVoice, speed, translateTo: null, ...activeExpression, ...activeClone } })).filter(({ input }) => input.text.trim());
       const invalid = inputs.map(({ input }) => validate(input)).find(Boolean);
       if (invalid) { setError(invalid); return; }
       locked.current = true; stopBatch.current = false; setBusy(true); setError(''); Keyboard.dismiss(); stop();
@@ -417,6 +422,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
         right={keyboard.visible ? <Circle name="keyboard" label="Ẩn bàn phím" onPress={Keyboard.dismiss} /> : undefined} />
       <PageScroll onLayout={event => setViewportHeight(event.nativeEvent.layout.height)} contentContainerStyle={{ flexGrow: 1, gap: 12 }}>
         {!keyboard.visible && <ProviderPicker disabled={busy || importing} />}
+        {mode === 'translation' && studio.provider === 'vieneu' && <Label size={12} style={{ color: colors.orange }}>VieNeu chưa hỗ trợ Dịch và đọc. Chọn Azure hoặc Gemini ở nguồn giọng.</Label>}
         {mode === 'speech' && <Action disabled={busy || importing} onPress={() => setSheet('source')}>
           {autoLanguage ? `Tự nhận diện · ${languageNames[lang] ?? lang}` : `Ngôn ngữ · ${languageNames[lang] ?? lang}`}
         </Action>}
@@ -508,6 +514,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
         style={{ paddingVertical: 12, minHeight: 44, flexDirection: 'row', gap: 12, justifyContent: 'space-between', alignItems: 'center' }}>
         <Label size={14} style={{ flex: 1 }}>Kiểm tra chính tả bằng AI</Label><Label size={14} weight="600" style={{ color: colors.blue }}>{checkSpelling ? 'Bật' : 'Tắt'}</Label>
       </Pressable>}
+      {mode === 'speech' && studio.provider === 'vieneu' ? <VoiceCloneControls value={voiceClone} onChange={setVoiceClone} /> : <>
       <Label size={18} weight="600">Sắc thái</Label>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {styleOptions.map(item => <Pressable key={item.value} accessibilityRole="button" accessibilityLabel={`Sắc thái ${item.label.toLowerCase()}`}
@@ -526,6 +533,7 @@ function ComposeBody({ keyboard }: { keyboard: { visible: boolean; height: numbe
           thumbTintColor={colors.blue} style={{ width: '100%', height: 44 }} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Label size={13} muted>Nhẹ · 0,1</Label><Label size={13} muted>Mạnh · 2,0</Label></View>
         {studio.provider === 'gemini' && <Label size={12} muted>Mức tương đối; âm thanh có thể khác Azure.</Label>}
+      </>}
       </>}
       <Label size={18} weight="600">Tốc độ đọc</Label><Label size={34} weight="600" style={{ color: colors.blue }}>{speed.toFixed(2).replace('.', ',')}×</Label>
       <Slider accessibilityLabel="Tốc độ đọc" value={speed} onValueChange={value => setSpeed(Math.round(value * 100) / 100)} minimumValue={MIN_SPEED} maximumValue={MAX_SPEED} step={0.05}

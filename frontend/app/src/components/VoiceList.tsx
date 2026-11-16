@@ -6,6 +6,7 @@ import { usePlayback } from '../state/Playback';
 import { languageNames, normalize } from '../lib/model';
 import { DEMO } from '../lib/api';
 import ProviderPicker from './ProviderPicker';
+import VoiceCloneManager from './VoiceCloneManager';
 import { voiceGender } from '../../../shared/voices';
 
 export default function VoiceList({ onSelect, selected, onlyLanguage, showProvider = true }: { onSelect?: (lang: string, id: string) => void; selected?: { lang: string; voice: string }; onlyLanguage?: string; showProvider?: boolean }) {
@@ -15,13 +16,14 @@ export default function VoiceList({ onSelect, selected, onlyLanguage, showProvid
   const [selection, setSelection] = useState({ provider, value: 'all' });
   const filter = selection.provider === provider ? selection.value : 'all';
   const setFilter = (value: string) => setSelection({ provider, value });
-  const all = useMemo(() => languages.filter(l => (!onlyLanguage || l.lang === onlyLanguage) &&
+  const all = useMemo(() => languages.filter(l => l.provider === provider && (!onlyLanguage || l.lang === onlyLanguage) &&
     (provider !== 'gemini' || filter === 'saved' || l.lang === (filter === 'all' ? onlyLanguage ?? lang : filter)))
     .flatMap(l => l.voices.map(v => ({ ...v, lang: l.lang }))), [languages, onlyLanguage, provider, filter, lang]);
   const filtered = all.filter(v => (filter === 'all' || (filter === 'saved' ? preferences.favorites.includes(`${v.lang}/${v.id}`) : v.lang === filter)) &&
     normalize(`${v.name ?? v.id} ${v.description ?? ''} ${languageNames[v.lang] ?? v.lang} ${voiceGender(v.gender)}`).includes(normalize(query)));
   return <>
     {showProvider && <ProviderPicker />}
+    {provider === 'vieneu' && !onlyLanguage && !DEMO && <VoiceCloneManager onChanged={reloadVoices} />}
     <SearchField label="Tìm giọng đọc" placeholder="Tìm tên giọng, ngôn ngữ…" value={query} onChange={setQuery} />
     <ScrollView testID="voice-filters" horizontal style={{ flexGrow: 0, flexShrink: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
       {[{ id: 'all', title: 'Tất cả' }, { id: 'saved', title: 'Đã lưu' }, ...languages.filter(l => !onlyLanguage || l.lang === onlyLanguage).map(l => ({ id: l.lang, title: languageNames[l.lang] ?? l.lang }))].map(item =>

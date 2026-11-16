@@ -1,0 +1,13 @@
+# VieNeu SDK được cài --no-deps; bỏ Gradio không cần cho smoke test CPU.
+sea-g2p==0.10.0
+onnxruntime==1.23.2
+numpy==2.2.6
+soundfile==0.13.1
+soxr==0.5.0.post1
+kaldi-native-fbank==1.22.3
+tokenizers==0.22.1
+huggingface_hub==0.36.0
+PyYAML==6.0.3
+librosa==0.11.0
+lameenc==1.8.1
+psutil==7.1.3

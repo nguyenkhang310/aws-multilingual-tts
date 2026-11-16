@@ -57,6 +57,7 @@ test('Audio Truyện tạo và mở lại project/chapter từ backend', async (
   const { storyApi } = await env.load('lib/story-api.ts');
   const { default: Audiobooks } = await env.load('views/Audiobooks.tsx');
   const projects = [], chapters = [];
+  const renames = [];
   storyApi.projects = async () => [...projects];
   storyApi.project = async () => ({ ...projects[0], chapterCount: chapters.length });
   storyApi.chapters = async () => [...chapters];
@@ -79,6 +80,11 @@ test('Audio Truyện tạo và mở lại project/chapter từ backend', async (
   storyApi.exportProject = async item => ({ format: 'voxa-story-v1', project: item, chapters: [] });
   storyApi.deleteCover = async item => { const updated = { ...item, version: item.version + 1, cover: null };
     projects[0] = updated; return updated; };
+  storyApi.renameProject = async (item, title) => {
+    renames.push({ item, title });
+    projects[0] = { ...item, title, version: item.version + 1 };
+    return projects[0];
+  };
   storyApi.createChapter = async (_id, chapterNumber, title) => {
     const item = { chapterId: 'b'.repeat(32), projectId: projects[0].projectId, schemaVersion: 1,
       chapterNumber, title, order: chapterNumber, sourceLang: 'vi-VN', textLength: 0, segmentCount: 0,
@@ -107,6 +113,12 @@ test('Audio Truyện tạo và mở lại project/chapter từ backend', async (
     assert.match(env.mount.querySelector('.story-book-heading').textContent, /Truyện của tôi/);
     assert.equal(env.mount.querySelector('dialog'), null, 'Lưu xong đóng form');
     await click(env.mount.querySelector('[aria-label="Tùy chọn truyện"]'));
+    await click(button('Đổi tên truyện'));
+    await type(env.mount.querySelector('form[aria-label="Đổi tên truyện"] input'), 'Truyện đã đổi tên');
+    await click(button('Lưu tên'));
+    assert.equal(renames.length, 1);
+    assert.equal(renames[0].title, 'Truyện đã đổi tên');
+    assert.match(env.mount.querySelector('.story-book-heading').textContent, /Truyện đã đổi tên/);
     const coverInput = env.mount.querySelector('input[type="file"]');
     Object.defineProperty(coverInput, 'files', { configurable: true, value: [new File(['png'], 'cover.png', { type: 'image/png' })] });
     await act(async () => { coverInput.dispatchEvent(new env.win.Event('change', { bubbles: true })); await settle(); });

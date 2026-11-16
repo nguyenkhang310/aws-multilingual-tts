@@ -40,6 +40,8 @@ def fingerprint(body, story_context=None):
         fields.append({"styleIntensity": body["styleIntensity"]})
     if body.get("provider") is not None:
         fields.append({"provider": body["provider"]})
+    if body.get("voiceProfileId") is not None:
+        fields.append({"voiceProfileId": body["voiceProfileId"], "voiceClone": body.get("voiceClone", {})})
     if story_context is not None:
         fields.append({"storyContext": story_context})
     canonical = json.dumps(fields, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
@@ -93,7 +95,8 @@ def replay_if_present(user_id, key, expected_fingerprint):
 
 
 def submit_first(user_id, key, expected_fingerprint, text, lang, voice, speed, provider, engine, dispatch,
-                 translate_to=None, style=None, style_intensity=1.0, story_context=None):
+                 translate_to=None, style=None, style_intensity=1.0, story_context=None,
+                 voice_profile_id=None, voice_clone=None):
     """Claim before quota and job creation; only the claim winner may dispatch."""
     try:
         created, record = db.create_idempotency(user_id, key, expected_fingerprint, make_job_id())
@@ -106,7 +109,8 @@ def submit_first(user_id, key, expected_fingerprint, text, lang, voice, speed, p
         record = db.update_idempotency(user_id, key, record, "RESERVED")
         db.create_job(user_id, text, lang, voice, speed, translate_to=translate_to,
                       provider=provider, engine=engine, job_id=job_id, style=style,
-                      style_intensity=style_intensity, story_context=story_context)
+                      style_intensity=style_intensity, story_context=story_context,
+                      voice_profile_id=voice_profile_id, voice_clone=voice_clone)
         record = db.update_idempotency(user_id, key, record, "JOB_CREATED")
         record = db.update_idempotency(user_id, key, record, "DISPATCHING")
     except Exception as error:

@@ -47,13 +47,20 @@ def create(scope, body, key=None):
     description = body.get("description", "")
     if not isinstance(description, str) or len(description) > 1000:
         raise StoryError(400, "INVALID_DESCRIPTION", "Mô tả tối đa 1.000 ký tự.")
+    cast = body.get("cast")
+    if cast is not None and (not isinstance(cast, dict) or
+            len(json.dumps(cast, ensure_ascii=False).encode("utf-8")) > 1024 * 1024):
+        raise StoryError(400, "INVALID_BACKUP_DATA", "Dữ liệu nhân vật trong backup không hợp lệ.")
     project_id = new_id(scope, "project", key)
-    fingerprint = hashlib.sha256(json.dumps([name, description, source, target], ensure_ascii=False).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps([name, description, source, target, cast],
+                                           ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     timestamp = now()
     data = {"schemaVersion": 1, "projectId": project_id, "title": name, "description": description,
             "sourceLang": source, "targetLang": target, "chapterCount": 0,
             "createdAt": timestamp, "updatedAt": timestamp, "version": 1, "status": "DRAFT",
             "requestHash": fingerprint}
+    if cast is not None:
+        data["cast"] = cast
     try:
         write(project_key(scope, project_id), data, create=True)
     except StoryError as error:

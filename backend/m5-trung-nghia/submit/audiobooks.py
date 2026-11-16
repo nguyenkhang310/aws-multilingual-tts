@@ -41,7 +41,7 @@ def _list(items, query):
 
 def _run(event):
     path, method = event.get("path", ""), event.get("httpMethod", "")
-    if "/translation-plans" in path or "/approved-translation" in path or path.endswith("/glossary"):
+    if "/translation-plans" in path or "/translation-drafts/" in path or "/approved-translation" in path or path.endswith("/glossary"):
         import story_translation_api
         return story_translation_api.run(event)
     if "/cover" in path:

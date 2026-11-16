@@ -20,7 +20,9 @@ flowchart LR
     J["M3 S3 JSON jobs"]
     A["M3 S3 audio MP3"]
     T["M5 stats MR"]
-    G["M5 Gemini typo / dịch MR ngoài AWS"]
+    G["M5 Gemini typo khi bật"]
+    Q["M5 chapter translation plans / approval"]
+    L["Azure Translator qua adapter M2"]
     M["M1 CloudWatch dashboard / SNS"]
     U --> CF
     CF -->|"static default"| W
@@ -37,6 +39,10 @@ flowchart LR
     R --> J
     R --> A
     T --> J
+    S --> Q
+    Q --> L
+    Q --> J
+    Q --> S
     S -. "sau MVP, skipped nếu chưa bật" .-> G
     S -->|"application telemetry"| M
     X -->|"worker logs"| M
@@ -51,10 +57,13 @@ flowchart LR
     class J,A,R m3;
     class CF,W m4;
     class S,T m5;
-    class U,P,G ext;
+    class Q m5;
+    class U,P,G,L ext;
 ~~~
 
 Cam M1, xanh dương M2, xanh lá M3, tím M4, đỏ M5, viền đứt ngoài AWS. OAC là cơ chế CloudFront ký truy cập origin. Web/jobs/audio là ba bucket riêng; dữ liệu MP3 đọc bằng presigned URL có hạn. Key Azure được cấu hình qua SSM SecureString; demo token có cơ chế và giới hạn riêng.
+
+STORY-02 dùng cùng route CloudFront/router/Submit nhưng lưu translation plan, glossary, draft và approved revision dưới prefix Audio Truyện trong jobs bucket M3. M5 gọi Azure Translator qua adapter M2 cho từng chunk, người dùng duyệt rồi audio plan đọc đúng approved revision; không dịch lại trong TTS. Batch translation được lưu bền nhưng chưa có trigger độc lập khi web/app đóng. Chi tiết API, quota, recovery và backup ở [CONVENTIONS](CONVENTIONS.md#story-02--dịch-truyện-theo-chương-và-tạo-audio-tiếng-việt-16112026).
 
 ## Luồng và routing
 

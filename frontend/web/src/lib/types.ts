@@ -23,6 +23,8 @@ export interface Language {
 }
 export interface SynthesizeInput {
   provider?: string;
+  voiceProfileId?: string;
+  voiceClone?: import('../../../shared/voice-clone').VoiceCloneSettings;
   style?: string;
   styleIntensity?: number;
   text: string;
@@ -63,6 +65,7 @@ export interface Job {
   cached?: boolean;
 }
 export interface HistoryItem extends Job {
+  chapterAudio?: import('../../../shared/story-playback').ChapterAudioRef;
   title?: string;
   storyChapterId?: string;
   text: string;

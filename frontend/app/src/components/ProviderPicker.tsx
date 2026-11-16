@@ -15,6 +15,7 @@ export default function ProviderPicker({ disabled = false }: { disabled?: boolea
       </Pressable>)}
     </View>
     {provider === 'gemini' && <Label size={12} muted>{languages[0]?.available === false ? 'Chưa bật Gemini TTS ở máy chủ.' : 'Gemini 3.8 Flash TTS'}</Label>}
+    {provider === 'vieneu' && <Label size={12} muted>Chỉ đọc tiếng Việt bằng hồ sơ WAV đã lưu; không hỗ trợ dịch hoặc sắc thái.</Label>}
   </View>;
 }
 const styles = StyleSheet.create({

@@ -17,7 +17,7 @@ import { StoryError, StoryInput, StoryChoices, storyStyles as styles, useStoryAc
 import { useStudio } from '../state/Studio';
 import { storyApi } from '../lib/story-api';
 import { readStoryAsset, shareStoryBackup } from '../lib/story-files';
-import { checkedBackup, checkedStoryCoverType, type StoryChapter as Chapter, type StoryProject } from '../../../shared/story';
+import { chapterLabel, checkedBackup, checkedStoryCoverType, type StoryChapter as Chapter, type StoryProject } from '../../../shared/story';
 import { useLayout } from '../hooks/useLayout';
 import { languageNames } from '../../../shared/languages';
 
@@ -165,7 +165,7 @@ function AudiobooksSession() {
         {chapters.slice(0, visibleCount).map((item, index) => <Pressable key={item.chapterId} accessibilityRole="button" accessibilityLabel={`${item.chapterNumber}. ${item.title}`} disabled={busy}
           onPress={() => selectChapter(item)} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 58, paddingVertical: 18,
             borderTopWidth: index ? 1 : 0, borderTopColor: colors.line, backgroundColor: pressed ? colors.raised : 'transparent' })}>
-          <Label muted size={14}>{item.chapterNumber}</Label><View style={{ flex: 1, gap: 4 }}><Label weight="600">{item.title}</Label><Label size={12} muted>{item.textLength ? `${item.textLength.toLocaleString('vi-VN')} ký tự` : 'Chưa có nội dung'}</Label></View><Icon name="next" size={16} color={colors.secondary} />
+          <View style={{ flex: 1, gap: 4 }}><Label weight="600">{chapterLabel(item.chapterNumber, item.title)}</Label><Label size={12} muted>{item.textLength ? `${item.textLength.toLocaleString('vi-VN')} ký tự` : 'Chưa có nội dung'}</Label></View><Icon name="next" size={16} color={colors.secondary} />
         </Pressable>)}
       </View>}
       {!chapters.length && <Label muted>Thêm chương để nhập nội dung.</Label>}

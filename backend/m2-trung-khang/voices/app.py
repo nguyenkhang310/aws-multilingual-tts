@@ -5,10 +5,11 @@ registry; chưa có giọng nào thì trả 503 thay vì danh sách bịa. Modul
 """
 
 import os
-from tts_common import config
+from tts_common import config, voice_profiles
 from tts_common.errors import error_response, json_response, log_json
 from tts_common.voices import load_registry, gemini_registry, gemini_settings, GEMINI_MODEL
 from tts_common.expression import auto_enabled
+from tts_common.utils import get_user_id
 
 
 def public_voice(voice):
@@ -51,10 +52,24 @@ def handler(event, context):
     gemini = {"id": "gemini", "name": "Gemini TTS", "model": GEMINI_MODEL,
               "enabled": gemini_settings() is not None, "nativeEmotion": True,
               "languages": build_languages(gemini_registry())}
+    clone_enabled = os.environ.get("VOICE_CLONE_ENABLED") == "true"
+    clone_voices = []
+    if clone_enabled:
+        try:
+            clone_voices = [{"id": item["voiceProfileId"], "gender": "U", "name": item["name"],
+                             "description": "Giọng cá nhân · VieNeu"} for item in voice_profiles.list_profiles(get_user_id(event))]
+        except Exception as error:
+            log_json(module="M2", operation="voice_profiles", status="ERROR", errorCode=type(error).__name__)
+    vieneu = {"id": "vieneu", "name": "VieNeu · Nhại giọng", "model": "vieneu-3.8.4-onnx-int8",
+              "enabled": clone_enabled, "nativeEmotion": False,
+              "languages": [{"lang": "vi-VN", "provider": "vieneu", "engine": "vieneu-3.8.4-onnx-int8",
+                             "voices": clone_voices, "speedRange": [0.7, 1.2]}] if clone_enabled else []}
+    if clone_enabled:
+        languages.append(vieneu["languages"][0])
     if not languages and gemini["enabled"]:
         languages = gemini["languages"]
     if not languages:
         return error_response(503, "VOICES_UNAVAILABLE", "Danh sách giọng đọc chưa sẵn sàng.")
-    return json_response(200, {"languages": languages, "providers": [gemini], "limits": {"maxChars": config.MAX_CHARS},
+    return json_response(200, {"languages": languages, "providers": [gemini, vieneu], "limits": {"maxChars": config.MAX_CHARS},
                                "features": {"translation": bool(os.environ.get("TRANSLATOR_API_PARAMETER_NAME")),
-                                            "autoEmotion": auto_enabled()}})
+                                            "autoEmotion": auto_enabled(), "voiceClone": clone_enabled}})

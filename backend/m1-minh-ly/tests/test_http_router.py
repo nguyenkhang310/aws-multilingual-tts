@@ -91,6 +91,12 @@ class TestHttpRouter(unittest.TestCase):
         with mock.patch.object(app, 'DOCUMENT_BODY_BYTES', 40):
             self.assertEqual(app.handler(event, None)['statusCode'], 400)
 
+    def test_legacy_project_backup_body_limit_is_scoped_to_project_create(self):
+        self.assertEqual(app.body_limit('/audiobooks', 'POST'), app.STORY_PROJECT_BODY_BYTES)
+        self.assertEqual(app.body_limit('/audiobooks/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'PATCH'),
+                         app.MAX_BODY_BYTES)
+        self.assertEqual(app.body_limit('/synthesize', 'POST'), app.MAX_BODY_BYTES)
+
 
     def test_missing_demo_token_returns_401(self):
         event = {
@@ -154,6 +160,15 @@ class TestHttpRouter(unittest.TestCase):
             response = app.handler(event, None)
             self.assertEqual(response["statusCode"], 404)
         self.assertEqual(self.dispatched_calls, [])
+
+    def test_chapter_audio_get_and_post_keep_demo_scope(self):
+        path = '/audiobooks/' + 'a' * 32 + '/chapters/' + 'b' * 32 + '/audio-plans/' + 'c' * 32 + '/chapter-audio'
+        for method in ('GET', 'POST'):
+            response = app.handler({'httpMethod': method, 'path': path,
+                                    'headers': {'X-Demo-Token': 'test-secret-token'}}, None)
+            self.assertEqual(response['statusCode'], 200)
+            self.assertEqual(self.dispatched_calls[-1]['function'], app.SUBMIT_FUNCTION_NAME)
+            self.assertEqual(self.dispatched_calls[-1]['payload']['requestContext']['scope'], 'demo')
 
     def test_method_not_allowed_returns_405(self):
         event = {

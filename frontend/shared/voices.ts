@@ -4,7 +4,7 @@ export interface CatalogLanguage {
   name?: string; model?: string; available?: boolean; maxChars?: number; translationEnabled?: boolean; autoEmotionEnabled?: boolean;
 }
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-const providerNames: Record<string, string> = { azure: 'Azure Speech', gemini: 'Gemini TTS', elevenlabs: 'ElevenLabs', polly: 'Amazon Polly' };
+const providerNames: Record<string, string> = { azure: 'Azure Speech', gemini: 'Gemini TTS', elevenlabs: 'ElevenLabs', polly: 'Amazon Polly', vieneu: 'VieNeu · Nhại giọng' };
 export const providerName = (id?: string) => providerNames[id ?? ''] ?? id ?? '';
 export const voiceGender = (gender: string) => gender === 'F' ? 'Nữ' : gender === 'M' ? 'Nam' : 'Giọng đọc';
 export const providerOptions = (languages: CatalogLanguage[]) => [...new Set(languages.map(l => l.provider))].map(value => ({ value, label: providerName(value) }));

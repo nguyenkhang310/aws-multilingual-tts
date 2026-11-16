@@ -3,7 +3,7 @@ import type { CatalogLanguage as Language } from '../../../shared/voices';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type EditorMode = 'speech' | 'translation';
 export type { CatalogVoice as Voice, CatalogLanguage as Language } from '../../../shared/voices';
-export interface Input { text: string; lang: string; voice: string; speed: number; translateTo: string | null; style?: string; styleIntensity?: number; provider?: string }
+export interface Input { text: string; lang: string; voice: string; speed: number; translateTo: string | null; style?: string; styleIntensity?: number; provider?: string; voiceProfileId?: string; voiceClone?: import('../../../shared/voice-clone').VoiceCloneSettings }
 export interface Job {
   provider?: string | null; engine?: string | null;
   style?: string; resolvedStyle?: string; styleIntensity?: number;
@@ -15,6 +15,7 @@ export interface Job {
   error?: string | { message?: string } | null;
 }
 export interface Recording extends Job {
+  chapterAudio?: import('../../../shared/story-playback').ChapterAudioRef;
   title?: string; storyChapterId?: string;
   text: string; lang: string; voice: string; speed?: number; charCount: number; createdAt: string;
   local?: boolean;

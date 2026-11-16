@@ -1,4 +1,23 @@
-import type { StoryChapter, StoryPlan, StoryQueueItem, StoryProgress } from './story';
+import type { StoryChapter, StoryChapterAudio, StoryPlan, StoryQueueItem, StoryProgress } from './story';
+
+export type ChapterAudioRef = { projectId: string; chapterId: string; planId: string };
+
+export function chapterRecording(chapter: StoryChapter, plan: StoryPlan, audio: StoryChapterAudio, title = chapter.title) {
+  if (audio.status !== 'DONE' || !audio.audioUrl) throw new Error('MP3 chương chưa sẵn sàng.');
+  return { jobId: `chapter-${plan.planId}`, status: 'DONE' as const, audioUrl: audio.audioUrl,
+    chapterAudio: { projectId: chapter.projectId, chapterId: chapter.chapterId, planId: plan.planId },
+    storyChapterId: chapter.chapterId, title, text: title, lang: plan.translateTo || plan.language,
+    voice: plan.voice, speed: plan.speed, charCount: plan.totalChars, createdAt: plan.createdAt };
+}
+
+export async function freshRecording<T extends { jobId: string; status: string; audioUrl: string | null; chapterAudio?: ChapterAudioRef }>(
+  record: T, loadJob: (id: string) => Promise<{ status: string; audioUrl: string | null }>,
+  loadChapter: (chapter: ChapterAudioRef, planId: string) => Promise<StoryChapterAudio>,
+): Promise<T> {
+  const next = record.chapterAudio ? await loadChapter(record.chapterAudio, record.chapterAudio.planId) : await loadJob(record.jobId);
+  if (next.status !== 'DONE' || !next.audioUrl) throw new Error('Bản thu chưa có âm thanh. Hãy làm mới.');
+  return { ...record, ...next, status: 'DONE', audioUrl: next.audioUrl };
+}
 
 export async function storyQueuePages(first: StoryProgress, next: (cursor: string) => Promise<StoryProgress>) {
   const items = new Map(first.items.map(item => [item.index, item]));

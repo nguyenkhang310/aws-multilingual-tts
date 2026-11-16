@@ -35,6 +35,7 @@ class FakeS3:
         self.revision = 0
         self.before_put = None
         self.head_error = None
+        self.uploads = {}
 
     def seed(self, bucket, key, data, content_type="application/octet-stream", metadata=None):
         self.revision += 1
@@ -89,3 +90,33 @@ class FakeS3:
         self.posts.append({"Bucket": Bucket, "Key": Key, "Fields": Fields,
                            "Conditions": Conditions, "ExpiresIn": ExpiresIn})
         return result
+
+    def create_multipart_upload(self, Bucket, Key, **options):
+        upload_id = f"upload-{len(self.uploads) + 1}"
+        self.uploads[upload_id] = {"bucket": Bucket, "key": Key, "parts": {}, "options": options}
+        return {"UploadId": upload_id}
+
+    def upload_part(self, Bucket, Key, UploadId, PartNumber, Body):
+        upload = self.uploads.get(UploadId)
+        if not upload or (upload["bucket"], upload["key"]) != (Bucket, Key):
+            raise ClientError("NoSuchUpload")
+        etag = f'"part-{PartNumber}-{len(Body)}"'
+        upload["parts"][PartNumber] = (Body, etag)
+        return {"ETag": etag}
+
+    def complete_multipart_upload(self, Bucket, Key, UploadId, MultipartUpload):
+        upload = self.uploads.get(UploadId)
+        if not upload or (upload["bucket"], upload["key"]) != (Bucket, Key):
+            raise ClientError("NoSuchUpload")
+        selected = MultipartUpload["Parts"]
+        if any(upload["parts"].get(part["PartNumber"], (None, None))[1] != part["ETag"] for part in selected):
+            raise ClientError("InvalidPart")
+        if any(len(upload["parts"][part["PartNumber"]][0]) < 5 * 1024 * 1024 for part in selected[:-1]):
+            raise ClientError("EntityTooSmall")
+        data = b"".join(upload["parts"][part["PartNumber"]][0] for part in selected)
+        self.seed(Bucket, Key, data, upload["options"].get("ContentType", "audio/mpeg"))
+        del self.uploads[UploadId]
+        return {"ETag": self.objects[Bucket, Key][1]}
+
+    def abort_multipart_upload(self, Bucket, Key, UploadId):
+        self.uploads.pop(UploadId, None)

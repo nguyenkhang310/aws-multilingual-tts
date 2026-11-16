@@ -6,7 +6,7 @@ export default function PreferenceSwitch({ checked, onChange, label, description
   checked: boolean;
   onChange: (checked: boolean) => void;
   label: string;
-  descriptionId: string;
+  descriptionId?: string;
 }) {
   const [position, setPosition] = useState<number | null>(null);
   const gesture = useRef<{ id: number; x: number; from: number; travel: number; moved: boolean } | null>(null);

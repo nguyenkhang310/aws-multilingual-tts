@@ -44,6 +44,21 @@ def save_glossary(scope, project_id, revision, entries):
     return result
 
 
+def restore_glossary(scope, project_id, revision, entries):
+    if type(revision) is not int or revision < 0:
+        raise StoryError(400, "INVALID_GLOSSARY", "Phiên bản thuật ngữ backup không hợp lệ.")
+    current, etag = glossary(scope, project_id)
+    if current != {"revision": 0, "entries": []} or etag is not None:
+        raise StoryError(409, "REVISION_CONFLICT", "Chỉ khôi phục thuật ngữ vào dự án mới.")
+    saved = save_glossary(scope, project_id, 0, entries)
+    if revision == saved["revision"]:
+        return saved
+    current, etag = glossary(scope, project_id)
+    restored = {"revision": revision, "entries": current["entries"]}
+    write(glossary_key(scope, project_id), restored, etag=etag)
+    return restored
+
+
 def plan_base(scope, project_id, chapter_id, plan_id):
     chapters.get(scope, project_id, chapter_id)
     return base(scope, project_id, chapter_id) + f"translations/{require_id(plan_id)}/"
@@ -160,6 +175,30 @@ def create_plan(scope, project_id, chapter_id, plan, chunks):
     return get_plan(scope, project_id, chapter_id, plan["planId"])[0]
 
 
+def restore_draft(scope, project_id, chapter_id, plan, chunks):
+    """Create an idle review plan; imported text is content, never a live run."""
+    existing = read(plan_key(scope, project_id, chapter_id, plan["planId"]))
+    if existing:
+        if existing[0].get("fingerprint") != plan["fingerprint"]:
+            raise StoryError(409, "PLAN_CONFLICT", "Bản nháp đã nhập với nội dung khác.")
+        return existing[0]
+    result = create_plan(scope, project_id, chapter_id, plan, [item["sourceText"] for item in chunks])
+    for index, imported in enumerate(chunks):
+        if imported["translated"]:
+            current = get_chunk(scope, project_id, chapter_id, plan["planId"], index)[0]
+            update_chunk(scope, project_id, chapter_id, plan["planId"], index,
+                         {"status": "EDITED", "translatedText": imported["translatedText"],
+                          "attempts": 0, "errorCode": None}, current["version"])
+        elif imported["reviewState"] in {"UNCERTAIN", "RUNNING"}:
+            update_chunk(scope, project_id, chapter_id, plan["planId"], index,
+                         {"status": "UNCERTAIN", "attempts": 0, "errorCode": "RESTORED_UNCERTAIN"})
+        elif imported["reviewState"] in {"FAILED", "BLOCKED_QUOTA"}:
+            update_chunk(scope, project_id, chapter_id, plan["planId"], index,
+                         {"status": imported["reviewState"], "attempts": 0,
+                          "errorCode": "RESTORED_REQUIRES_REVIEW"})
+    return result
+
+
 def update_chunk(scope, project_id, chapter_id, plan_id, index, changes, expected_version=None):
     item, etag = get_chunk(scope, project_id, chapter_id, plan_id, index)
     if expected_version is not None and expected_version != item.get("version", 1):
@@ -230,6 +269,41 @@ def imported_segments(scope, project_id, chapter_id, upload_id, count):
         if not stored or stored[0].get("index") != index:
             raise StoryError(409, "IMPORT_INCOMPLETE", "Backup bản dịch chưa tải đủ.")
         result.append(stored[0]["text"])
+    return result
+
+
+def import_draft_segment(scope, project_id, chapter_id, upload_id, index, source_text, translated, text, review_state):
+    require_id(upload_id)
+    if (type(index) is not int or not 0 <= index < 2000 or not isinstance(source_text, str) or
+            not source_text or len(source_text.encode("utf-8")) > 6000 or len(source_text.encode("utf-16-le")) // 2 > 1200 or
+            type(translated) is not bool or review_state not in {
+                "DONE", "EDITED", "QUEUED", "RUNNING", "FAILED", "UNCERTAIN", "BLOCKED_QUOTA"} or
+            (translated and (not isinstance(text, str) or not text.strip() or len(text) > 10000)) or
+            (not translated and text is not None)):
+        raise StoryError(400, "INVALID_DRAFT", "Phần bản nháp không hợp lệ.")
+    key = base(scope, project_id, chapter_id) + f"translations/draft-imports/{upload_id}/{index:04d}.json"
+    value = {"index": index, "sourceText": source_text, "translated": translated,
+             "translatedText": text, "reviewState": review_state}
+    try:
+        write(key, value, create=True)
+    except StoryError as error:
+        stored = read(key)
+        if error.code != "REVISION_CONFLICT" or not stored or stored[0] != value:
+            raise
+    return {"stored": True, "index": index}
+
+
+def imported_draft_segments(scope, project_id, chapter_id, upload_id, count):
+    require_id(upload_id)
+    if type(count) is not int or not 1 <= count <= 2000:
+        raise StoryError(400, "INVALID_DRAFT", "Số phần bản nháp không hợp lệ.")
+    result = []
+    for index in range(count):
+        key = base(scope, project_id, chapter_id) + f"translations/draft-imports/{upload_id}/{index:04d}.json"
+        stored = read(key)
+        if not stored or stored[0].get("index") != index:
+            raise StoryError(409, "IMPORT_INCOMPLETE", "Bản nháp chưa tải đủ.")
+        result.append(stored[0])
     return result
 
 

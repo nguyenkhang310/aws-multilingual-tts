@@ -133,6 +133,32 @@ class RuntimeTests(unittest.TestCase):
         query['signature'] = ['0' * 64]
         self.assertIsNone(self.runtime.cover(pid, query))
 
+    def test_chapter_audio_uses_signed_local_links_and_rejects_tampering(self):
+        from urllib.parse import parse_qs, urlsplit
+        from tts_common import story_chapter_audio
+        key = 'audio/demo/audiobooks/' + '/'.join(['a' * 32, 'b' * 32, 'c' * 32, 'd' * 64]) + '.mp3'
+        self.runtime.s3.put_object(Bucket=self.runtime.config.AUDIO_BUCKET, Key=key, Body=b'fixture-mp3')
+        for url in (self.runtime.audio_url(key), story_chapter_audio.download_url(key, 2, 'Truyện mới')):
+            self.assertNotIn('amazonaws.com', url)
+            parsed = urlsplit(url); query = parse_qs(parsed.query)
+            media_id = parsed.path.removeprefix('/media/')
+            self.assertEqual(self.runtime.audio(media_id, query), b'fixture-mp3')
+            if 'download' in query:
+                self.assertIn('filename*=', query['download'][0])
+                query['download'] = ['attachment; filename="tampered.mp3"']
+            else:
+                query['expires'] = ['1']
+            self.assertIsNone(self.runtime.audio(media_id, query))
+        with self.assertRaises(ValueError):
+            self.runtime.audio_url('audio/demo/audiobooks/../../private.mp3')
+
+    def test_enabled_clone_requires_explicit_model_and_cache_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / '.env.local'
+            path.write_text('DEMO_TOKEN=fixture\nVOICE_CLONE_ENABLED=true\n')
+            with self.assertRaisesRegex(ValueError, 'VOICE_CLONE_MODEL_DIR'):
+                server.settings(path)
+
 
 if __name__ == '__main__':
     unittest.main()

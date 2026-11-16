@@ -63,6 +63,9 @@ def load_module(name, path):
     return module
 
 
+gemini_rotation = load_module('tts_local_gemini_rotation', 'deployment/local/gemini_rotation.py')
+
+
 def settings(path=ENV_FILE, *, host=None, public_url=None):
     from dotenv import dotenv_values
     if not path.is_file():
@@ -78,6 +81,7 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
         'GEMINI_API_KEY': '', 'GEMINI_MODEL': '', 'GEMINI_TYPO_ENABLED': 'false', 'GEMINI_TIMEOUT_SECONDS': '8', 'GEMINI_TRANSLATION_ENABLED': 'false', 'GEMINI_EMOTION_ENABLED': 'false',
         'GEMINI_OCR_ENABLED': 'false', 'GEMINI_OCR_MODEL': 'gemini-3.5-flash-lite', 'OCR_DAILY_CALL_LIMIT': '100',
         'GEMINI_TTS_ENABLED': 'false', 'GEMINI_TTS_MODEL': 'gemini-3.8-flash-tts', 'GEMINI_TTS_DAILY_CALL_LIMIT': '100',
+        'VOICE_CLONE_ENABLED': 'false', 'VOICE_CLONE_MODEL_DIR': '', 'VOICE_CLONE_CACHE_DIR': '',
         'DEMO_TOKEN': '', 'MAX_CHARS': '10000', 'DAILY_CHAR_LIMIT': '30000', 'STORY_MAX_ACTIVE': '1',
         'STORY_TRANSLATION_DAILY_CHARS': '100000',
     }
@@ -90,8 +94,21 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
         result['LOCAL_PUBLIC_URL'] = public_url
     for name in result:
         result[name] = result[name].strip()
+    if result['GEMINI_API_KEY']:
+        gemini_rotation.parse_keys(result['GEMINI_API_KEY'])
     if result['GEMINI_TTS_ENABLED'] not in {'true', 'false'}:
         raise ValueError('GEMINI_TTS_ENABLED dùng true hoặc false.')
+    if result['VOICE_CLONE_ENABLED'] not in {'true', 'false'}:
+        raise ValueError('VOICE_CLONE_ENABLED dùng true hoặc false.')
+    if result['VOICE_CLONE_ENABLED'] == 'true':
+        for name in ('VOICE_CLONE_MODEL_DIR', 'VOICE_CLONE_CACHE_DIR'):
+            if not result[name]:
+                raise ValueError(f'{name} chưa được cấu hình cho VieNeu.')
+            path = Path(result[name]).expanduser()
+            path = path if path.is_absolute() else ROOT / path
+            if not path.is_dir():
+                raise ValueError(f'{name} cần trỏ tới thư mục VieNeu đã tải trong repo.')
+            result[name] = str(path.resolve())
     if not result['GEMINI_TIMEOUT_SECONDS'].isdigit() or not 1 <= int(result['GEMINI_TIMEOUT_SECONDS']) <= 8:
         raise ValueError('GEMINI_TIMEOUT_SECONDS từ 1 đến 8 giây.')
     if result['GEMINI_TTS_ENABLED'] == 'true' and (not result['GEMINI_API_KEY'] or result['GEMINI_TTS_MODEL'] != 'gemini-3.8-flash-tts'):
@@ -219,6 +236,9 @@ class Runtime:
             'GEMINI_TTS_ENABLED': self.values.get('GEMINI_TTS_ENABLED', 'false'),
             'GEMINI_TTS_MODEL': self.values.get('GEMINI_TTS_MODEL', 'gemini-3.8-flash-tts'),
             'GEMINI_TTS_DAILY_CALL_LIMIT': self.values.get('GEMINI_TTS_DAILY_CALL_LIMIT', '100'),
+            'VOICE_CLONE_ENABLED': self.values['VOICE_CLONE_ENABLED'],
+            'VOICE_CLONE_MODEL_DIR': self.values['VOICE_CLONE_MODEL_DIR'],
+            'VOICE_CLONE_CACHE_DIR': self.values['VOICE_CLONE_CACHE_DIR'],
             'OCR_DAILY_CALL_LIMIT': self.values['OCR_DAILY_CALL_LIMIT'],
             'GEMINI_TRANSLATION_ENABLED': self.values['GEMINI_TRANSLATION_ENABLED'],
             'GEMINI_API_PARAMETER_NAME': '/local/gemini' if self.values['GEMINI_API_KEY'] else '',
@@ -232,7 +252,7 @@ class Runtime:
             sys.path.insert(0, str(ROOT / path))
             self.stack.callback(sys.path.remove, str(ROOT / path))
         from tts_common import aws, config, storage, voices
-        from tts_common import story_covers, story_projects
+        from tts_common import story_covers, story_projects, story_chapter_audio
         from providers import common
         self.aws, self.config, self.storage, self.voices = aws, config, storage, voices
         self.story_covers, self.story_projects = story_covers, story_projects
@@ -259,6 +279,8 @@ class Runtime:
         self.replace(aws, 's3', lambda: self.s3)
         self.replace(aws, 'lambda_client', lambda: self)
         self.replace(storage, 'get_audio_url', self.audio_url)
+        self.replace(story_chapter_audio, 'download_url', lambda key, number, title: self.audio_url(
+            key, disposition=story_chapter_audio.download_disposition(number, title)))
         self.replace(story_covers, 'begin', self.begin_cover)
         self.replace(story_covers, 'public_view', self.public_cover_view)
         self.worker = load_module('local_worker', 'backend/m2-trung-khang/synthesize/app.py')
@@ -269,6 +291,12 @@ class Runtime:
             self.router.HISTORY_FUNCTION_NAME: load_module('local_history', 'backend/m3-trung-duc/history/app.py').handler,
             self.router.STATS_FUNCTION_NAME: load_module('local_stats', 'backend/m5-trung-nghia/stats/app.py').handler,
         }
+        if self.values['GEMINI_API_KEY']:
+            from providers.common import OPENER
+            import correction
+            keys = gemini_rotation.parse_keys(self.values['GEMINI_API_KEY'])
+            for opener in {id(OPENER): OPENER, id(correction._opener): correction._opener}.values():
+                self.stack.callback(gemini_rotation.install(opener, keys))
         self.router.set_lambda_invoker(lambda name, event: self.handlers[name](event, LocalContext()))
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='tts-local')
         self.stack.callback(self.executor.shutdown, wait=True)
@@ -316,14 +344,23 @@ class Runtime:
         finally:
             self.pending.release()
 
-    def audio_url(self, key, ttl=None):
+    def _audio_key(self, media_id):
         from tts_common.utils import are_valid_ids
+        chapter = re.fullmatch(r'chapter-([a-f0-9]{32})-([a-f0-9]{32})-([a-f0-9]{32})-([a-f0-9]{64})', media_id)
+        if chapter:
+            return 'audio/demo/audiobooks/' + '/'.join(chapter.groups()) + '.mp3'
+        return self.storage.audio_key('demo', media_id) if are_valid_ids('demo', media_id) else None
+
+    def audio_url(self, key, ttl=None, *, disposition=''):
         job = key.removeprefix('audio/demo/').removesuffix('.mp3')
-        if not are_valid_ids('demo', job) or self.storage.audio_key('demo', job) != key:
+        if job.startswith('audiobooks/'):
+            job = 'chapter-' + job.removeprefix('audiobooks/').replace('/', '-')
+        if self._audio_key(job) != key:
             raise ValueError('Khóa audio local không hợp lệ')
         expires = int(time.time()) + min(ttl or 900, 3600)
-        signature = hmac.new(self.secret, f'{job}:{expires}'.encode(), hashlib.sha256).hexdigest()
-        return f"{self.values['LOCAL_PUBLIC_URL']}/media/{quote(job)}?{urlencode({'expires': expires, 'signature': signature})}"
+        payload = f'{job}:{expires}' + (f':{disposition}' if disposition else '')
+        signature = hmac.new(self.secret, payload.encode(), hashlib.sha256).hexdigest()
+        return f"{self.values['LOCAL_PUBLIC_URL']}/media/{quote(job)}?{urlencode({'expires': expires, 'signature': signature, **({'download': disposition} if disposition else {})})}"
 
     def begin_cover(self, scope, project_id, content_type, size_bytes, version):
         ticket = self.s3_cover_begin(scope, project_id, content_type, size_bytes, version)
@@ -357,8 +394,8 @@ class Runtime:
             return None
 
     def audio(self, job, query):
-        from tts_common.utils import are_valid_ids
-        if not are_valid_ids('demo', job):
+        key = self._audio_key(job)
+        if not key:
             return None
         try:
             expires = int(query['expires'][0])
@@ -367,11 +404,15 @@ class Runtime:
             return None
         if not re.fullmatch(r'[a-f0-9]{64}', signature):
             return None
-        expected = hmac.new(self.secret, f'{job}:{expires}'.encode(), hashlib.sha256).hexdigest()
+        disposition = query.get('download', [''])[0]
+        if len(disposition) > 1024 or '\r' in disposition or '\n' in disposition:
+            return None
+        payload = f'{job}:{expires}' + (f':{disposition}' if disposition else '')
+        expected = hmac.new(self.secret, payload.encode(), hashlib.sha256).hexdigest()
         if expires < time.time() or not hmac.compare_digest(expected, signature):
             return None
         try:
-            response = self.s3.get_object(Bucket=self.config.AUDIO_BUCKET, Key=self.storage.audio_key('demo', job))
+            response = self.s3.get_object(Bucket=self.config.AUDIO_BUCKET, Key=key)
         except self.s3.exceptions.NoSuchKey:
             return None
         body = response['Body']
@@ -434,6 +475,8 @@ def handler_class(runtime):
                 if data is None:
                     return self.error(404, 'NOT_FOUND', 'Link âm thanh đã hết hạn hoặc bản thu không còn.')
                 status, headers = 200, {'Content-Type': 'audio/mpeg', 'Accept-Ranges': 'bytes'}
+                if parse_qs(path.query).get('download'):
+                    headers['Content-Disposition'] = parse_qs(path.query)['download'][0]
                 if 'Range' in self.headers:
                     match = re.fullmatch(r'bytes=(\d*)-(\d*)', self.headers['Range'])
                     if not match or not any(match.groups()):

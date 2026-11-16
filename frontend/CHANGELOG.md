@@ -1,5 +1,17 @@
 # CHANGELOG — M4
 
+## 2026-11-17 — Gộp M5, sửa lỗi tích hợp và nghiệm thu local
+
+- Gộp đủ 33 commit của Nghĩa tới `082f223`, giữ lịch sử và các tính năng ghép MP3 chương, backup draft/thuật ngữ, hồ sơ giọng VieNeu. Giữ riêng lựa chọn Azure/Gemini, kết quả dịch, phiên soạn, Liquid Glass, animation và chiều cao sidebar gọn từ M4.
+- Sửa VieNeu bị chặn ở registry worker và import manifest sai cấp package; chỉ kiểm hồ sơ đúng scope/ngôn ngữ, cờ bật và tốc độ rồi mới vào provider. Giữ kwargs Azure/Gemini cũ. WAV thiếu PCM/truncated hoặc thiếu xác nhận bị từ chối trước lưu. Sửa trần liệt kê 50 hồ sơ vì mỗi hồ sơ gồm hai object S3; ID sai trả 400. Test dùng WAV tổng hợp và provider giả, không tải/chạy model thật.
+- Ghép MP3 trả ETag của chính lần ghi, tránh nhận lease/checkpoint của writer khác. Local ký được link phát/tải MP3 chương có tên UTF-8, kiểm chữ ký/path/expiry và không trỏ tới S3 thật. Web/app dùng chung tham chiếu project/chapter/plan để làm mới link; nghe cả chương và từng đoạn vẫn dùng một trình phát, không nhảy sang lịch sử thường. App cho tiếp tục ghép khi MP3 mất và bỏ nút làm mới MP3 thừa sau khi hoàn tất.
+- Sửa trạng thái vẫn RUNNING khi mọi đoạn đã DONE trước callback cuối. Phần trăm web lấy checkpoint thật, không tăng giả rồi giật lùi khi backend cập nhật. Giữ animation tiến độ/kính hiện có.
+- Màn dịch khóa chỉnh/duyệt/đổi kế hoạch trong lúc tải phần mới hoặc còn bản chỉnh chưa lưu; không sửa nhầm phần cũ, có nút thử lại khi mất mạng. Hồ sơ giọng dùng nút nhập tệp tiếng Việt, chặn tệp quá lớn trước khi đọc, reset form, căn checkbox/text trên màn hẹp; app dọn file tạm, hỗ trợ cả native và Expo web, không giả nghe thử VieNeu bằng giọng thiết bị. Bỏ dependency `lamejs` sau khi chuyển ghép MP3 sang backend.
+- Sửa import helper Gemini trong local runtime khi nạp bằng module và bắt buộc khai báo đường dẫn model/cache khi bật VieNeu. Không sửa `.env.local`, key, model hoặc cờ thật của người dùng.
+- **683 kiểm thử local PASS:** M1 40, M2 115, M3 67, M5 180, local runtime 23, web 147, app 111. Web production build, app typecheck/lint và Expo export iOS/Android/web PASS. `cfn-lint` root và toàn bộ template con PASS. Cảnh báo Vite chunk lớn hiện hữu; không che cảnh báo.
+- **33 trường hợp Chrome local PASS:** 8 vòng TTS/dịch thành công/thất bại không reload/mất nháp; 2 luồng web/Expo web cùng player; 11 kiểm MP3 chương/link local và hồ sơ WAV ở 320/390/768/1.440 px sáng/tối; 10 kiểm sidebar/chuyển nguồn, tới 2.560 px; 2 luồng nhập WAV, xác nhận/lưu và đồng bộ catalog trên Expo web 320 px sáng/tối. API truyện dùng router/handlers/Moto, provider và dữ liệu mẫu giả lập, không gọi AWS/Azure/Gemini thật. Chưa kiểm thiết bị iOS/Android, Safari, chất lượng model VieNeu hoặc Sandbox.
+- Quyền push được người dùng giao cho main/M1–M5; đồng bộ bằng merge/fast-forward, không force-push. Không triển khai AWS trong lượt này; GUIDE riêng tiếp tục ignore.
+
 ## 2026-11-17 — Kiểm đúng thao tác Tạo giọng đọc
 
 - Thử 8 chu kỳ tạo giọng thường/dịch, chờ PENDING/PROCESSING rồi DONE/FAILED ở 390/1.440 px. Mỗi chu kỳ có đúng một request tạo job và một document ban đầu; URL, định danh trang, DOM ô nhập và nội dung không đổi, không pageerror. API/MP3 giả lập, không gọi provider/AWS thật.
@@ -35,6 +47,42 @@
 - Web/app lọc catalog đúng provider, không gom tất cả nguồn ngoài Gemini vào Azure. Dịch tách ngôn ngữ gốc khỏi nguồn TTS, giữ bản nháp/cặp ngôn ngữ khi còn được hỗ trợ; giọng đích chỉ thuộc ngôn ngữ/nguồn đã chọn. Đổi nguồn/giọng bỏ sắc thái cũ, duyệt cũ hoặc phản hồi xử lý đến muộn không tạo job. Nhãn Quét chữ, Azure Translator và Giọng sau khi dịch phân biệt ba tác vụ. Không thay API dịch, fallback, provider model hoặc key/env.
 - **244 kiểm thử frontend PASS:** web 137, app 107; gồm chuyển provider trong màn dịch, nguồn không có giọng ở provider đích, preview cache và lỗi 401 không tạo MP3/fallback. App typecheck/lint, web build và Expo export iOS/Android/web PASS; Vite còn cảnh báo chunk lớn hiện hữu.
 - **100 trường hợp Chrome local PASS:** 39 bố cục/kính/player ở 320–2.560 px, 12 thao tác tua/âm lượng bằng chuột/cảm ứng giả lập/bàn phím, 14 kiểm tra thanh bên/provider web (gồm khung thấp 320/390 px), 4 chuyển nguồn/cặp ngôn ngữ/sắc thái trên Expo web, 31 luồng tạo giọng/duyệt bản dịch/typo và bố cục web/app. Fixture MP3 có HTTP Range; API dùng Moto và HTTP provider giả, không dùng tài liệu riêng hoặc gọi AWS/Azure/Gemini thật. Không pageerror ở các bộ kiểm này. Chưa xác minh Safari, cảm giác kéo/bàn phím/GlassView trên thiết bị native hoặc xác thực key Translator thật. Chưa commit/push hoặc deploy trong lượt này.
+
+## 2026-11-16 — Tích hợp giao diện VieNeu thử nhại giọng (coded; chưa kiểm thử trong lượt này)
+
+- Web/app dùng chung types và giới hạn WAV; giao diện thêm/xóa hồ sơ, chọn hồ sơ như một giọng VieNeu, và điều chỉnh **Bám cách nói mẫu**, **Lọc nhiễu mẫu**, **Độ ổn định**. Hướng dẫn nêu rõ đây là các tham số thử nghiệm, không cam kết làm giọng giống hơn.
+- Hướng dẫn thử sau bản đầu: giữ cùng câu, đổi từng tham số, tạo lại rồi so sánh trong Bản thu. Cấu hình khác tạo request khác; replay cùng nội dung/cấu hình vẫn theo idempotency. Sửa đường **Tạo các phần còn lại** để các job batch cũng gửi `voiceProfileId` và cấu hình VieNeu; trước sửa đường này thiếu profile và backend từ chối request.
+- Bổ sung hướng dẫn cài VieNeu vào `.venv` dùng bởi `npm run dev`, đặt model ở `voice02-local/` và mô tả đường AWS candidate. Thêm contract cho routes `/voice-profiles` và payload TTS.
+- Files: `frontend/shared/voice-clone.ts`, API clients web/app, `VoiceCloneManager` web/app, `VoiceCloneControls`, web `App.tsx`/`useStudio.ts`, app `compose.tsx`, `frontend/infra/hosting.yaml`, README local/frontend và `docs/CONVENTIONS.md`.
+- Không chạy tests, frontend build, SAM build/validate hoặc AWS thật trong lượt này; không deploy/commit/push. Hạ tầng VieNeu vẫn candidate, chưa AWS verified.
+
+## 2026-11-16 — Sửa nhãn phần trăm và làm nổi nút tạm dừng
+
+- Tiến độ audio chương luôn hiển thị số phần trăm dương trực tiếp, ví dụ `48%`; trạng thái ước tính vẫn có chú thích riêng bên dưới. Bỏ ký hiệu `~` trước phần trăm.
+- Nút `Tạm dừng` trên web có khối nền, viền, bóng nhẹ, hover/focus và trạng thái disabled theo thiết kế hiện tại.
+
+## 2026-11-16 — Gọn thao tác dịch chương và căn đều bản gốc/bản dịch
+
+- Chuyển nút lập/cập nhật kế hoạch lên cùng hàng tiêu đề ngôn ngữ; bỏ mã trạng thái kỹ thuật khỏi dòng tiến độ. Nút bắt đầu/tiếp tục dùng màu xanh chính.
+- Chỉ hiện điều hướng Trước/Sau khi bản dịch có nhiều phần. Bản gốc và bản dịch thành hai khung nền đồng bộ, cùng chiều cao/khả năng cuộn trên web; Expo cũng dùng hai khung nội dung cùng kích thước tối thiểu.
+- Giữ nguyên API, checkpoint, sửa/lưu từng phần và quy trình duyệt. Web: build PASS, 139/139 UI tests PASS. App: typecheck/lint PASS, 109/109 tests PASS. Chưa kiểm trực quan trên thiết bị native.
+
+## 2026-11-16 — Làm rõ tiến độ và tên tải MP3 Audio Truyện
+
+- Khi M2 đang gọi provider, web hiển thị tiến độ ước tính tăng dần, có dấu `~` và chú thích; các mốc worker/M5 vẫn là tiến độ xác nhận, 100% chỉ hiện khi hoàn tất. Tải đoạn từ player dùng tên đoạn thay cho mã job.
+- Xác minh tên file MP3 chương tại M3 presigned `Content-Disposition`; bài kiểm thử M5 kiểm cả tên ASCII dự phòng và tên UTF-8 `chuong XX - <tên truyện>.mp3`. Kiểm thử web/backend liên quan chạy local/mock; chưa thử trình duyệt tải từ S3 AWS thật.
+
+## 2026-11-16 — Sửa thao tác đổi tên truyện trên web
+
+- Thay `window.prompt()` vốn không được runtime/trình duyệt hiện tại hỗ trợ bằng ô nhập tên truyện ngay trong Tùy chọn truyện. Lưu vẫn gọi API PATCH hiện có kèm version/CAS; lỗi được giữ trong thông báo giao diện. Thêm kiểm thử đổi tên.
+- Xác minh: web UI 137/137, build PASS; app tests 109/109, typecheck PASS. M1 40 tests (14 bỏ qua theo điều kiện môi trường), M2 115/115 bằng `.venv`, M3 65/65 và M5 suite PASS. Không gọi AWS/provider thật, không deploy/commit/push.
+
+## 2026-11-16 — Rebase integration with latest M4 frontend and M5 story endpoints
+
+- Giữ cấu trúc mới của M4: Expo tách `StoryAudio`/`StoryChapter`; web giữ player chung và hook playback. Không khôi phục màn Audio Truyện monolithic hoặc danh sách chương trùng trong sidebar. Đã chuyển tính năng MP3 chương vào component hiện hành: backend ghép/lưu một file, web nghe/tải, app tải/chia sẻ bằng tên `chuong XX - <tên truyện>.mp3`.
+- Dùng `shared/story-client.ts` làm API chung cho web/app; nối các API chapter-audio và import draft dịch vào client chung. Tiến độ backend M5 hiển thị theo checkpoint chunk TTS và thanh web chuyển động giữa các checkpoint. Khi nhập chương, bỏ tiền tố `Chương/Chapter/Chuong + số` bị lặp trong tên file và giữ đúng số chương. Backup giữ draft, revision và legacy cast an toàn, giới hạn UTF-8 20 MiB, không mang job/lease/URL tạm.
+- Đã sửa mock trong `frontend/web/tests/story-batch.test.mjs` để phản ánh request trạng thái chapter-audio mới. Kiểm thử: web 137/137; web build PASS (cảnh báo bundle ELD >500 KiB hiện hữu); app typecheck/lint PASS và tests 109/109. Backend M1 40/40, M3 65/65, M5 174/174. Không gọi AWS/provider thật, không deploy.
+- Các xung đột phát sinh do bản local cũ thay trực tiếp các màn mà M4 vừa tách thành components. Giải quyết bằng cách giữ phiên bản M4 mới và port các API/chức năng vào shared client/component mới; không thay đổi kiến trúc giao diện M4. Không khôi phục danh sách chương lặp trong sidebar, khung tạo/khôi phục cũ, hay tên tải riêng từng đoạn: M4 mới bỏ điều hướng lặp và phát từng đoạn qua player chung; MP3 đầy đủ của chương có tên riêng ở backend.
 
 ## 2026-11-16 — Rà điều hướng trước khi đồng bộ các nhánh
 
@@ -678,3 +726,8 @@ Người dùng yêu cầu rà soát toàn bộ thay đổi, khôi phục hình A
 - Rà soát lại: backend 143 tests, web production build và 69 tests, app typecheck/lint và 22 tests, export iOS/Android đều đạt. cfn-lint đạt root + 5 template con; đường dẫn đóng gói và registry đồng bộ, logical ID/resource properties/permissions không đổi.
 - Markdown được render để kiểm liên kết, heading anchors và ảnh local; bản xem trước desktop/mobile phục vụ kiểm tra, không đưa vào repo. Giấy phép, lockfile, tests và lịch sử cũ được giữ; cache/dependency/build/env không đưa vào commit.
 - Việc kiểm tra và đồng bộ Git không gọi AWS/provider hoặc triển khai tài nguyên. Kiểm trên thiết bị thật và phiên Sandbox mới vẫn cần thực hiện riêng.
+# 2026-11-16 — Phản hồi lỗi Gemini quota trong Audio Truyện
+
+- Khi worker trả `GEMINI_TTS_QUOTA`, tiến độ giờ nhận diện run đã dừng dù trạng thái cũ còn `RUNNING`; giao diện không còn hiện nút Tạm dừng sai. Không tự retry job khi provider báo quota.
+- Web/app giải thích đây là giới hạn/quota Gemini, không phải nội dung truyện sai; cho phép thử lại đoạn đó theo thao tác người dùng khi quota được khôi phục, hoặc tạo kế hoạch mới bằng Azure Speech. Ước tính quota nội bộ không bảo đảm Google còn quota thực tế.
+- Kiểm tra local: M5 176/176, web UI 139/139, app 109/109 đạt; web production build và app typecheck đạt. Không gọi Gemini/AWS, không deploy/commit/push.

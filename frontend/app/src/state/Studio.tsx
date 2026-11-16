@@ -6,6 +6,7 @@ import { api, configureSubmissionStore, DEMO, setDemoToken } from '../lib/api';
 import { DEFAULT_SPEED, demoLanguages, isRecording, type Input, type Language, type Preferences, type Recording } from '../lib/model';
 import { HISTORY_SYNC_INTERVAL, mergeHistoryPage } from '../../../shared/history';
 import { providerOptions } from '../../../shared/voices';
+import { DEFAULT_VOICE_CLONE, type VoiceCloneSettings } from '../../../shared/voice-clone';
 
 const KEYS = { preferences: 'tts.app.preferences.v1', recordings: 'tts.app.recordings.v1', draft: 'tts.app.draft.v1', translationDraft: 'tts.app.draft.translation.v1', submissions: 'tts.app.submissions.v1' };
 const defaults: Preferences = { theme: 'system', reducedMotion: false, haptics: true, favorites: [], demoToken: '' };
@@ -53,6 +54,7 @@ function useStudioState() {
   const [voiceError, setVoiceError] = useState('');
   const voiceRequest = useRef(0);
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
+  const [voiceClone, setVoiceClone] = useState<VoiceCloneSettings>(DEFAULT_VOICE_CLONE);
   const [cursor, setCursor] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
@@ -203,7 +205,7 @@ function useStudioState() {
   };
   return { colors, isDark, preferences, updatePreferences, reducedMotion, active, ready, history, languages, allLanguages: catalog, provider, providers, setProvider, draft, setDraft, translationDraft, setTranslationDraft,
     translationPreviews, translationApproved, translationCompleted,
-    lang, voice, speed, setSpeed, selectVoice, loadingVoices, voiceError, reloadVoices, saveRecording, removeRecording, refresh, refreshing, cursor,
+    lang, voice, speed, setSpeed, voiceClone, setVoiceClone, selectVoice, loadingVoices, voiceError, reloadVoices, saveRecording, removeRecording, refresh, refreshing, cursor,
     notice, setNotice, haptic };
 }
 const StudioContext = createContext<ReturnType<typeof useStudioState> | null>(null);

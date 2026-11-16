@@ -1,7 +1,7 @@
 import { ApiError, request } from './api';
 import { checkedStoryCoverType, storyCoverStorageError, type StoryCover, type StoryProject } from '../../../shared/story';
 import { createStoryClient } from '../../../shared/story-client';
-export { checkedBackup, storyChunks } from '../../../shared/story';
+export { checkedBackup, safeStoryCast, serializeStoryBackup, storyChunks } from '../../../shared/story';
 const key = () => Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 const coverPath = (projectId: string) => `/audiobooks/${projectId}/cover`;
 type CoverAsset = { uri: string; file?: Blob; fileName?: string | null; fileSize?: number; mimeType?: string | null };

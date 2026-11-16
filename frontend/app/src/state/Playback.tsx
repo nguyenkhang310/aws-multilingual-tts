@@ -8,6 +8,8 @@ import { duration, splitSpeech, type Recording } from '../lib/model';
 import { useStudio } from './Studio';
 import { api, DEMO } from '../lib/api';
 import { markTtsPlayable } from '../../../shared/tts-performance';
+import { freshRecording } from '../../../shared/story-playback';
+import { storyBatchApi } from '../lib/story-api';
 
 function usePlaybackState() {
   const { setNotice, history } = useStudio();
@@ -114,14 +116,20 @@ function usePlaybackState() {
     } catch { setNotice('Không phát được âm thanh. Bạn hãy thử lại.'); }
   }, [player, speak, stop, setNotice]);
   const play = useCallback(async (record: Recording) => {
-    queueRef.current = [];
+    if (record.chapterAudio) {
+      const request = ++token.current;
+      const fresh = await freshRecording(record, api.job, storyBatchApi.chapterAudio);
+      if (request !== token.current) return;
+      record = fresh;
+    }
+    queueRef.current = record.chapterAudio ? [record] : [];
     await start(record);
   }, [start]);
   const playQueue = useCallback(async (items: Recording[]) => {
     const record = items[0];
     if (!record) return;
     const request = ++token.current;
-    const job = await api.job(record.jobId);
+    const job = await freshRecording(record, api.job, storyBatchApi.chapterAudio);
     if (request !== token.current) return;
     if (job.status !== 'DONE' || !job.audioUrl) throw new Error('Đoạn này chưa có âm thanh. Hãy làm mới.');
     queueRef.current = items;
@@ -133,7 +141,7 @@ function usePlaybackState() {
     if (record.audioUrl) {
       if (status.error && !DEMO) {
         const request = token.current;
-        try { const job = await api.job(record.jobId); if (request === token.current) await start({ ...record, ...job }); }
+        try { const job = await freshRecording(record, api.job, storyBatchApi.chapterAudio); if (request === token.current) await start(job); }
         catch { setNotice('Chưa làm mới được liên kết. Hãy tải lại danh sách bản thu.'); }
         return;
       }
@@ -155,7 +163,7 @@ function usePlaybackState() {
     if (!record) return;
     const request = ++token.current;
     try {
-      const job = record.local || DEMO ? record : await api.job(record.jobId);
+      const job = record.local || DEMO ? record : await freshRecording(record, api.job, storyBatchApi.chapterAudio);
       if (request !== token.current) return;
       if (job.status !== 'DONE' || (!DEMO && !job.audioUrl)) throw new Error();
       await start({ ...record, ...job });
@@ -175,12 +183,13 @@ function usePlaybackState() {
     let path: string | undefined;
     try {
       if (!current.audioUrl) { await Share.share({ message: current.text }); return; }
-      if (Platform.OS === 'web') { await Share.share({ message: current.audioUrl }); return; }
+      const fresh = !DEMO && !current.local ? await freshRecording(current, api.job, storyBatchApi.chapterAudio) : current;
+      if (Platform.OS === 'web') { await Share.share({ message: fresh.audioUrl! }); return; }
       path = `${FileSystem.cacheDirectory}ban-thu-${Date.now()}.mp3`;
-      const result = await FileSystem.downloadAsync(current.audioUrl, path);
+      const result = await FileSystem.downloadAsync(fresh.audioUrl!, path);
       if (result.status !== 200) throw new Error('Tải âm thanh chưa thành công. Hãy tải lại danh sách để làm mới liên kết.');
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(result.uri, { mimeType: 'audio/mpeg', UTI: 'public.mp3', dialogTitle: 'Lưu hoặc chia sẻ bản thu' });
-      else await Share.share({ url: current.audioUrl });
+      else await Share.share({ url: fresh.audioUrl! });
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Chưa chia sẻ được bản thu.'); }
     finally {
       if (path) await FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});

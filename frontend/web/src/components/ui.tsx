@@ -284,7 +284,7 @@ export function Toggle({
   onChange,
 }: {
   label: string;
-  description: string;
+  description?: string;
   checked: boolean;
   onChange: (value: boolean) => void;
 }) {
@@ -293,9 +293,9 @@ export function Toggle({
     <div className="preference-row">
       <span>
         <strong>{label}</strong>
-        <small id={descriptionId}>{description}</small>
+        {description && <small id={descriptionId}>{description}</small>}
       </span>
-      <PreferenceSwitch label={label} descriptionId={descriptionId} checked={checked} onChange={onChange} />
+      <PreferenceSwitch label={label} descriptionId={description ? descriptionId : undefined} checked={checked} onChange={onChange} />
     </div>
   );
 }

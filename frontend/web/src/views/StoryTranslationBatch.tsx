@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { StoryChapter, StoryProject } from '../../../shared/story';
+import { chapterLabel, type StoryChapter, type StoryProject } from '../../../shared/story';
 import { translateStoryChapters } from '../../../shared/story-translation-run';
 import { storyTranslationApi as api } from '../lib/story-translation-api';
 
@@ -44,7 +44,7 @@ export default function StoryTranslationBatch({ project, chapters, onBusy }: { p
     {available.map(item => <label key={item.chapterId}><input type="checkbox" checked={selected.includes(item.chapterId)}
       disabled={running} onChange={event => setSelected(current => event.target.checked
         ? [...current, item.chapterId] : current.filter(id => id !== item.chapterId))} />
-      {item.chapterNumber}. {item.title}</label>)}
+      {chapterLabel(item.chapterNumber, item.title)}</label>)}
     <div className="story-actions"><button type="button" disabled={running} onClick={() => setSelected(available.map(item => item.chapterId))}>Chọn tất cả</button>
       <button type="button" className="primary-button" disabled={running || !selected.length} onClick={() => void translateMany()}>
         Dịch các chương đã chọn</button>

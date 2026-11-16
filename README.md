@@ -46,6 +46,7 @@ Repository được tổ chức theo trách nhiệm của năm thành viên. Fro
 | Chuyển văn bản thành MP3 | Có backend async và giao diện web/app. Một stack/web hiện có đã được chuyển sang Azure và ghi nhận demo ngày 08/11/2026. |
 | Chọn ngôn ngữ, giọng và tốc độ | Lấy từ `/voices`; danh mục Azure được xác minh theo resource/vùng khi chạy `configure`. |
 | Gemini TTS tùy chọn | Gemini 3.8 Flash TTS; 30 giọng, 71 lựa chọn ngôn ngữ/vùng, sắc thái cụ thể hoặc tự chọn theo nội dung. Có hai MP3 local qua Gemini thật; các tổ hợp còn lại và Sandbox chưa nghiệm thu. [Bật local](deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng). |
+| Hồ sơ giọng VieNeu thử nghiệm | Nhập WAV 3–8 giây, chọn hồ sơ và tinh chỉnh cách đọc trên web/app. Cần cài model CPU riêng; kiểm thử tích hợp dùng provider giả, chưa nghiệm thu model trên máy này hoặc AWS. [Cấu hình local](deployment/local/README.md#vieneu-nhại-giọng-trên-local). |
 | Nhập tài liệu và OCR | Có trong Tạo giọng đọc và Dịch và đọc, mỗi trang giữ nội dung riêng. PDF, DOCX, TXT, Markdown và ảnh JPG/PNG/WebP; tối đa 50 MB, 200.000 ký tự và 50.000 từ. Hai chế độ: Gemini qua backend (đọc ảnh, duyệt chữ trước khi dùng) hoặc OCR tại thiết bị. Cần bật Gemini ở backend; không tự fallback. |
 | Tài liệu dài | Chia thành các bản thu tối đa 10.000 ký tự; chọn từng phần hoặc tạo tuần tự, dừng khi gặp lỗi/quota. Chưa kiểm chứng trên Sandbox/điện thoại thật. |
 | Audio Truyện | Có code quản lý dự án → chương → đoạn, queue batch lưu ở S3, MP3 theo từng đoạn, Pause/Resume/Retry và ảnh bìa. Completion callback có thể cấp tiếp khi client đóng; chưa có scheduler độc lập nếu callback bị mất. Chưa deploy/kiểm Sandbox. |
@@ -59,7 +60,7 @@ Repository được tổ chức theo trách nhiệm của năm thành viên. Fro
 
 Code, kiểm thử local và demo trong một phiên là các mức bằng chứng khác nhau. Khả năng tạo mới toàn bộ stack, dựng lại sau reset và hoạt động trên thiết bị thật cần được kiểm riêng. Trạng thái và tiêu chí nghiệm thu của từng phần nằm trong README/CHANGELOG của thành viên.
 
-**Dùng Audio Truyện:** web mở **Audio Truyện**; app mở **Công cụ → Audio Truyện**. Luồng chung là **Thư viện → Truyện → Chương**, với các mục **Nghe & tạo**, **Nội dung**, **Bản dịch**. Nút nghe và thanh phát dùng chung một phiên; thu nhỏ không dừng tiếng. Nhập chương, tùy chọn giọng và quản lý truyện mở ở bảng riêng. Xuất bản sao trước khi kết thúc Lab; bản sao chứa nội dung và bản dịch đã duyệt, không gồm MP3 hoặc ảnh bìa. Nhập nhiều tệp và gộp MP3 hiện có trên web. Xem [hướng dẫn M4](frontend/README.md) và [hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
+**Dùng Audio Truyện:** web mở **Audio Truyện**; app mở **Công cụ → Audio Truyện**. Luồng chung là **Thư viện → Truyện → Chương**, với các mục **Nghe & tạo**, **Nội dung**, **Bản dịch**. Nút nghe và thanh phát dùng chung một phiên; thu nhỏ không dừng tiếng. Khi mọi đoạn hoàn tất, backend ghép thành một MP3 chương trong S3; tên tải về theo dạng `chuong XX - <tên truyện>.mp3`. Tiến độ hiển thị cả chunk TTS đã hoàn tất. Backup giữ nội dung gốc, glossary, bản dịch đã duyệt và draft dịch; không gồm MP3, ảnh bìa hoặc URL tạm. Xem [hướng dẫn M4](frontend/README.md) và [hợp đồng Audio Truyện](docs/CONVENTIONS.md#audio-truyện-story-01a--project-chapter-segment-14112026).
 
 ## Kiến trúc
 

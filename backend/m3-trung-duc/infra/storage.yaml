@@ -104,6 +104,8 @@ Resources:
           - Id: expire-audio
             Status: Enabled
             ExpirationInDays: !Ref RetentionDays
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
 
   CommonLayer:
     Type: AWS::Serverless::LayerVersion

@@ -285,3 +285,11 @@ Dùng Liquid Glass có chừng mực cho điều khiển/điều hướng, khôn
 Người dùng giao rà luồng rồi commit/push lên main và toàn bộ nhánh thành viên. Phản hồi tải truyện/chương phải gắn với phiên đang mở, không được mở lại màn vừa đóng; lưu lần đầu không đổi key làm khởi tạo lại màn soạn. Back ở app đi lần lượt Chương → Truyện → Thư viện → trang trước; nội dung chưa lưu cần giữ/bỏ rõ ràng. Đổi hash/Back trình duyệt web cũng qua kiểm tra rời trang, chọn lại trang hiện tại giữ nội dung. Đóng modal phục hồi focus không cuộn lệch trang. Khóa thao tác rời bảng đang lưu/dịch; tạm dừng trước khi đóng.
 
 Đồng bộ nhánh bằng fast-forward hoặc merge giữ lịch sử sau khi fetch và kiểm tra chênh lệch; không force-push hay ghi đè commit thành viên. Đây là quyền Git, không phải quyền triển khai AWS hoặc gọi provider thật. GUIDE cá nhân cập nhật sau commit và tiếp tục được ignore.
+
+## 24. Tích hợp M5 và rà lỗi — 17/11/2026
+
+Người dùng giao gộp toàn bộ code M5, sửa lỗi liên quan frontend/backend và đồng bộ main cùng các nhánh thành viên, giữ lịch sử. VieNeu là nguồn thử nghiệm từ M5, độc lập Azure/Gemini; không tự tải model, bật env thật, gọi provider hoặc deploy từ yêu cầu Git này. Contract hồ sơ, quota và điều kiện vận hành ở CONVENTIONS/local README; log tích hợp bổ sung trong CHANGELOG M4.
+
+Giữ cài đặt riêng từng provider, không dùng giọng thiết bị để giả giọng VieNeu. Worker kiểm hồ sơ/scope/cờ bật trước model; WAV phải có đủ dữ liệu PCM thật. Checkpoint ghép chương dùng ETag trả trực tiếp từ lần ghi, không đọc lại rồi nhận lease của writer khác. MP3 chương dùng tham chiếu project/chapter/plan để lấy lại URL, không gọi `/jobs/{planId}`; web/app dùng chung trình phát và helper trong `shared/story-playback.ts`. Local chỉ ký link tới MP3 job/chương đúng scope, không mở đường đọc object tùy ý.
+
+Màn duyệt dịch không cho sửa phần cũ trong lúc tải phần mới hoặc thay kế hoạch khi còn bản chỉnh chưa lưu. Phần trăm audio lấy checkpoint backend, không tăng giả theo thời gian chờ. Giữ Liquid Glass, thanh bên gọn, animation và cài đặt giảm chuyển động. Build/export/mock và kiểm Chrome không thay nghiệm thu native thật, quyền Sandbox hay chất lượng model VieNeu.

@@ -16,6 +16,7 @@ ROUTE = re.compile(rf"^/audiobooks/({ID})/chapters/({ID})/translation-plans"
                    rf"(?:/({ID})(?:/(start|tick|pause|resume|approve|progress|chunks(?:/(\d{{1,4}}))?(?:/retry)?))?)?$")
 APPROVED = re.compile(rf"^/audiobooks/({ID})/chapters/({ID})/approved-translation(?:/(\d{{1,4}}))?$")
 IMPORT = re.compile(rf"^/audiobooks/({ID})/chapters/({ID})/approved-translation/import/({ID})/(\d{{1,4}}|commit)$")
+DRAFT_IMPORT = re.compile(rf"^/audiobooks/({ID})/chapters/({ID})/translation-drafts/import/({ID})/(\d{{1,4}}|commit)$")
 
 
 def run(event):
@@ -32,6 +33,9 @@ def run(event):
         if method == "PUT":
             body = _body(event)
             return 200, store.save_glossary(scope, project_id, body.get("revision"), body.get("entries"))
+        if method == "POST":
+            body = _body(event)
+            return 201, store.restore_glossary(scope, project_id, body.get("revision"), body.get("entries"))
     match = IMPORT.fullmatch(path)
     if match:
         project_id, chapter_id, upload_id, step = match.groups()
@@ -51,6 +55,17 @@ def run(event):
                     "glossaryRevision": store.glossary(scope, project_id)[0]["revision"]}
             return 200, store.approve(scope, project_id, chapter_id, plan, segments,
                                       body.get("version", 0))
+    match = DRAFT_IMPORT.fullmatch(path)
+    if match:
+        project_id, chapter_id, upload_id, step = match.groups()
+        body = _body(event)
+        if step != "commit" and method == "PUT":
+            return 200, store.import_draft_segment(scope, project_id, chapter_id, upload_id,
+                int(step), body.get("sourceText"), body.get("translated"), body.get("translatedText"),
+                body.get("reviewState"))
+        if step == "commit" and method == "POST":
+            chunks = store.imported_draft_segments(scope, project_id, chapter_id, upload_id, body.get("count"))
+            return 201, plans.restore(scope, project_id, chapter_id, upload_id, body, chunks)
     match = APPROVED.fullmatch(path)
     if match and method == "GET":
         project_id, chapter_id, index = match.groups()

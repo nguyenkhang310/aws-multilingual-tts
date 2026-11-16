@@ -9,6 +9,7 @@ import FilePickerButton from './components/FilePickerButton';
 import CorrectionReview from "./components/CorrectionReview";
 import DocumentReview from './components/DocumentReview';
 import TranslationResult from './components/TranslationResult';
+import VoiceCloneManager from './components/VoiceCloneManager';
 import { DOCUMENT_MODES, type DocumentMode } from '../../shared/vision';
 import {
   Button,
@@ -46,6 +47,7 @@ import { StoryPlaybackContext } from './hooks/StoryPlayback';
 import type { HistoryItem, Page, Preferences } from "./lib/types";
 import { MAX_DOCUMENT_CHARS, OCR_LANGUAGES, wordCount } from '../../shared/documents';
 import { expressionHint } from '../../shared/expression';
+import { DEFAULT_VOICE_CLONE, stabilityFromTemperature, temperatureFromStability } from '../../shared/voice-clone';
 
 type Dialog = "voices" | "menu" | null;
 const pages = [
@@ -108,6 +110,9 @@ export default function App() {
   const speechEditor = useEditor(session, notify, { draftKey: DRAFT_KEYS.speech });
   const translationEditor = useEditor(session, notify, { draftKey: DRAFT_KEYS.translation, translateTo: target });
   const studio = { ...session, ...(page === "translation" ? translationEditor : speechEditor) };
+  useEffect(() => {
+    if (languageFilter !== 'all' && !studio.languages.some(item => item.lang === languageFilter)) setLanguageFilter('all');
+  }, [studio.provider, studio.languages, languageFilter]);
   useEffect(() => {
     if (studio.languages.length)
       setTarget((previous) =>
@@ -346,6 +351,7 @@ export default function App() {
           {page !== 'translation' && <Select label="Lọc ngôn ngữ giọng đọc" value={languageFilter} onValueChange={setLanguageFilter}
             options={[{ value: "all", label: "Tất cả ngôn ngữ" }, ...studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />}
         </div>
+        {studio.provider === 'vieneu' && !DEMO && <VoiceCloneManager disabled={studio.busy} onChanged={studio.loadVoices} />}
         {studio.voiceError ? (
           <div className="inline-error" role="alert">
             <p>{studio.voiceError}</p>
@@ -726,6 +732,7 @@ export default function App() {
                       onValueChange={selectProvider} options={studio.providers} disabled={studio.busy || studio.readingFile} /> :
                       <div className="engine-label"><Icon name="layers" size={17} /><span>{DEMO ? 'Giọng trên máy' : providerLabel(studio.language?.provider)}</span></div>}
                     {studio.provider === 'gemini' && <small>{studio.language?.available === false ? 'Chưa bật Gemini TTS ở máy chủ.' : 'Gemini 3.8 Flash TTS'}</small>}
+                    {page === 'translation' && studio.provider === 'vieneu' && <small>VieNeu chưa hỗ trợ Dịch và đọc; chọn Azure hoặc Gemini.</small>}
                   </div>
                   {page === 'translation' && <div className="setting-field translation-provider"><span>Dịch văn bản</span><strong>Azure Translator</strong></div>}
                   <div className="setting-field">
@@ -784,14 +791,28 @@ export default function App() {
                   )}
                   {page === "studio" && <Toggle label="Kiểm tra chính tả bằng AI" description="Duyệt gợi ý trước khi tạo giọng."
                     checked={studio.checkSpelling} onChange={studio.setCheckSpelling} />}
-                  <div className="setting-field">
+                  {page === 'studio' && studio.provider === 'vieneu' && <section className="voice-clone-tuning" aria-label="Tinh chỉnh giọng nhại">
+                    <h3>Tinh chỉnh giọng nhại</h3>
+                    <Toggle label="Bám cách nói mẫu"
+                      checked={studio.voiceClone.useRefCodes} onChange={value => studio.setVoiceClone(current => ({ ...current, useRefCodes: value }))} />
+                    <Toggle label="Lọc nhiễu mẫu"
+                      checked={studio.voiceClone.denoise} onChange={value => studio.setVoiceClone(current => ({ ...current, denoise: value }))} />
+                    <div className="setting-field speed-field">
+                      <div className="field-heading"><label htmlFor="clone-stability">Độ ổn định</label>
+                        <output htmlFor="clone-stability">{stabilityFromTemperature(studio.voiceClone.temperature)}%</output></div>
+                      <Slider id="clone-stability" min={0} max={100} step={5} value={stabilityFromTemperature(studio.voiceClone.temperature)}
+                        disabled={studio.busy} onValueChange={value => studio.setVoiceClone(current => ({ ...current, temperature: temperatureFromStability(value) }))} />
+                      <div className="range-labels"><span>Biến thiên hơn</span><span>Ổn định hơn</span></div>
+                    </div>
+                  </section>}
+                  {studio.provider !== 'vieneu' && <div className="setting-field">
                     <label htmlFor="speaking-style">Sắc thái</label>
                     <Select id="speaking-style" label="Sắc thái" value={studio.style} onValueChange={studio.setStyle}
                       options={studio.styles} disabled={studio.busy || studio.styles.length < 2} />
                     {studio.styles.length < 2 && selectedVoice && <small>{expressionHint(studio.language?.provider, selectedVoice.styles)}</small>}
                     {studio.style === 'auto' && <small>{studio.provider === 'gemini' ? 'Gemini tự điều chỉnh cảm xúc khi đọc theo nội dung.' : 'Gửi đoạn đọc cho Gemini để chọn sắc thái.'}</small>}
-                  </div>
-                  {studio.style !== 'neutral' && selectedVoice?.styleIntensityRange && <div className="setting-field speed-field">
+                  </div>}
+                  {studio.provider !== 'vieneu' && studio.style !== 'neutral' && selectedVoice?.styleIntensityRange && <div className="setting-field speed-field">
                     <div className="field-heading"><label htmlFor="style-intensity">Cường độ sắc thái</label>
                       <output htmlFor="style-intensity">{studio.styleIntensity.toFixed(1)}×</output></div>
                     <Slider id="style-intensity" min={0.1} max={2} step={0.1} value={studio.styleIntensity}
@@ -823,6 +844,7 @@ export default function App() {
                     onClick={() => {
                       studio.setSpeed(1);
                       studio.setStyle('neutral');
+                      studio.setVoiceClone(DEFAULT_VOICE_CLONE);
                       const initial =
                         studio.languages.find((l) => l.lang === "vi-VN" && l.voices.length) ||
                         studio.languages.find((l) => l.voices.length);

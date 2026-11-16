@@ -1,11 +1,23 @@
 """Tra cứu registry giọng cho worker."""
 
+import os
+
 from providers.base import PermanentProviderError
+from tts_common import voice_profiles
 from tts_common.voices import load_registry
 
 
-def find_entry(lang, voice: str, speed: float, provider=None) -> dict:
+def find_entry(lang, voice: str, speed: float, provider=None, *, user_id=None) -> dict:
     """Kiểm tra ngôn ngữ, giọng, tốc độ trước khi tốn credit gọi provider."""
+    if provider == "vieneu":
+        if os.environ.get("VOICE_CLONE_ENABLED") != "true":
+            raise PermanentProviderError("VOICE_CLONE_NOT_CONFIGURED", "Chưa bật VieNeu ở máy chủ.")
+        profile = voice_profiles.get(user_id, voice)
+        if not profile or profile.get("status") != "READY" or profile.get("lang") != lang:
+            raise PermanentProviderError("VOICE_PROFILE_NOT_FOUND", "Không tìm thấy hồ sơ giọng đã chọn.")
+        if not 0.7 <= speed <= 1.2:
+            raise PermanentProviderError("UNSUPPORTED_SPEED", "Giọng đọc không hỗ trợ tốc độ này.")
+        return {"provider": provider, "engine": profile["engine"], "voices": [{"id": voice}]}
     try:
         registry = load_registry(provider=provider) if provider else load_registry()
     except (OSError, ValueError):

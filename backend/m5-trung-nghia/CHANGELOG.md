@@ -1,5 +1,33 @@
 # CHANGELOG — M5
 
+## 2026-11-16 — Bổ sung kiểm tra tiến độ chunk và tải MP3 chương
+
+- Thêm regression cho phần trăm một queue segment khi worker đã checkpoint chunk nội bộ. Kiểm tra `Content-Disposition` của MP3 chương có `filename` ASCII dự phòng và `filename*` UTF-8 đúng tên.
+- Chỉ xác minh bằng fake S3/provider và tests local; chưa kiểm callback, tải file hoặc header trên AWS Sandbox.
+
+## 2026-11-16 — STORY-05 tên MP3 chương và tiến độ worker
+
+- Tên tệp chương tải về theo mẫu `chuong XX - <tên truyện>.mp3`, lấy tên truyện từ project và mã hóa UTF-8 trong Content-Disposition; tên segment có kèm tên truyện.
+- `percentComplete` giờ cộng phần `chunksDone/chunkCount` đang lưu ở job worker, trong khi `done/total` tiếp tục đếm segment hoàn tất. Polling hiện tại nhận được tiến độ từng chunk mà không cần gọi worker thêm.
+- Sau khi gộp vào frontend M4 mới, M5 suite chạy 174/174 PASS; không gọi AWS/provider thật.
+
+## 2026-11-16 — STORY-05 MP3 cả chương (local)
+
+- Thêm GET/POST trạng thái và từng bước ghép theo plan. Chỉ dùng job DONE có context/revision đúng và audio ETag còn tồn tại; checkpoint CAS cùng lease ngăn lượt ghép trùng. MP3 lớn chia staging tối đa 16 MiB/lượt, hoàn thiện bằng S3 multipart. Tải lại trang vẫn tiếp tục được; file hợp lệ được dùng lại, URL ký cấp mới. Không gọi provider hoặc reserve quota.
+- 7 test mới gồm thứ tự, file MP3 giải mã được bằng FFmpeg, thiếu/sai plan, định dạng lỗi, multipart lớn, replay và lỗi tạm. Sau đồng bộ frontend M4, M5 suite 174/174 PASS; M1 40, M3 65 PASS. Chưa deploy/call AWS/provider thật; cần M1/M3/M4 review.
+
+## 2026-11-16 — STORY-02 draft backup/restore
+
+- Thêm import draft chunk qua upload staging, xác minh source khôi phục trùng chương và tạo plan idle gắn source revision mới. DONE/EDITED nội dung thành EDITED; RUNNING/UNCERTAIN phục hồi thành UNCERTAIN; FAILED/quota giữ trạng thái cần xử lý, không được tự xếp hàng chạy lại. Commit lặp cùng upload/content trả plan đã tạo; không gọi Translator, reserve quota hoặc tạo run.
+- M5 suite: 164/164 PASS, gồm M1 route → M5 → M3 restore, edit/replay, approve/audio-plan, incomplete import và no-Azure/no-quota checks. Fake S3/Lambda; không gọi AWS/provider thật.
+
+## 2026-11-16 — STORY-02 translation review safety
+
+- Reused M5 translation plan and M2 Azure preview bridge. Manual edits now unblock chunks whose glossary placeholder was not preserved, without repeating a provider call. Expired in-flight chunks become `UNCERTAIN`; retries remain restricted to verified `FAILED` chunks. Retrying while paused keeps the run paused.
+- Added tests for uncertain-result manual recovery, expired lease, competing tick claim, and retry while paused. M5 translation suite: 8/8 PASS. No live Azure/AWS request.
+- Late provider results now use chunk version CAS, so they cannot overwrite a chunk already reconciled or manually edited. Translation suite: 9/9 PASS.
+- Full M5 suite after integration: 160/160 PASS.
+
 ## 2026-11-15 — TYPO-CORRECTION-02 (coded, locally tested)
 
 - Gemini typo nhận toàn câu và chỉ trả `correctedText`. Backend tính diff/offset UTF-16; cho phép lỗi Telex, dấu và chữ lặp được đề xuất để người dùng duyệt. Giữ URL/email và giới hạn sửa gần từ gốc; phản hồi không hợp lệ trả `skipped` với mã lý do, không tạo job TTS.
@@ -205,3 +233,7 @@ Các mục cũ giữ nguyên nội dung và lệnh theo cấu trúc tại thời
 - Đếm source trước/sau đợt cải tiến từ `4e8294b`, ghi các file cũ quá 150 dòng và nội dung gửi riêng từng owner trong `docs/reports/GUI-TEAM-THAY-DOI-M5.md`. Source mới của đợt này trong 150 dòng; chưa refactor hàng loạt file cũ. Tách bridge tests khỏi translation tests và tách ledger tests khỏi document tests, giữ assertions.
 - Sửa ba vấn đề có bằng chứng: bridge local nhận lang list/dict gây TypeError (đã tái hiện bằng test); demo smoke vô tình gọi Gemini (thêm cờ skip chỉ cho demo); web test nhận env local của người dùng (cô lập env, thêm regression cho local bridge, giữ assertions cloud/mock).
 - Kết quả cuối: M1 20/20, M2 67/67, M3 49/49, M5 88/88, web UI 90/90, app 37/37; tổng 351 pass, 0 fail. Web build/typecheck, app typecheck, Bash syntax đạt; smoke routing hai chế độ đạt bằng mock. Lần web suite đầu có 4 fail do env local, đã sửa nguyên nhân và chạy lại đạt. Không gọi AWS/provider, không deploy, commit hoặc push.
+# 2026-11-16 — Dừng run đúng trạng thái khi Gemini TTS hết quota
+
+- M5 tiến độ đối soát lỗi quota từ job M2, trả `BLOCKED_QUOTA` thay vì giữ `RUNNING` cũ khi không còn job active. `GEMINI_TTS_QUOTA` được cho phép thử lại thủ công qua giới hạn attempt hiện có; không có retry tự động. Người dùng có thể đổi sang Azure bằng kế hoạch mới.
+- Kiểm tra local: toàn bộ M5 176/176 đạt; web UI 139/139, production build đạt; app typecheck và tests 109/109 đạt. Chưa gọi provider/AWS, chưa deploy.

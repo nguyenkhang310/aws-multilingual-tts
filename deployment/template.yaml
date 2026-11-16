@@ -26,6 +26,19 @@ Parameters:
     Type: String
     Default: azure
     AllowedValues: [elevenlabs, azure]
+  VoiceCloneEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  VoiceCloneModelPrefix:
+    Type: String
+    Default: voice-clone/vieneu-3.8.4
+    AllowedPattern: '[A-Za-z0-9/_-]+'
+  VoiceCloneMemoryMb:
+    Type: Number
+    Default: 3072
+    MinValue: 2048
+    MaxValue: 10240
   TranslatorApiParameterName:
     Type: String
     Default: ''
@@ -165,6 +178,9 @@ Resources:
         GeminiEmotionEnabled: !Ref GeminiEmotionEnabled
         GeminiApiParameterName: !Ref GeminiApiParameterName
         GeminiModel: !Ref GeminiModel
+        VoiceCloneEnabled: !Ref VoiceCloneEnabled
+        VoiceCloneModelPrefix: !Ref VoiceCloneModelPrefix
+        VoiceCloneMemoryMb: !Ref VoiceCloneMemoryMb
 
   Submit:
     Type: AWS::Serverless::Application
@@ -202,6 +218,7 @@ Resources:
         StoryMaxAttempts: !Ref StoryMaxAttempts
         StoryHeadlessEnabled: !Ref StoryHeadlessEnabled
         StatsScanMaxJobs: !Ref StatsScanMaxJobs
+        VoiceCloneEnabled: !Ref VoiceCloneEnabled
 
   Api:
     Type: AWS::Serverless::Application

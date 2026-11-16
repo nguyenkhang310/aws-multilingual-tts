@@ -9,13 +9,23 @@ import sys
 
 MAX_BODY_BYTES = int(os.environ.get("MAX_BODY_BYTES", str(250 * 1024)))
 DOCUMENT_BODY_BYTES = 3 * 1024 * 1024
+STORY_PROJECT_BODY_BYTES = 2 * 1024 * 1024
+VOICE_PROFILE_BODY_BYTES = 3 * 1024 * 1024
 
 
 def body_limit(path, method):
-    return DOCUMENT_BODY_BYTES if method == "POST" and path.rstrip("/") == "/documents/recognize" else MAX_BODY_BYTES
+    if method == "POST" and path.rstrip("/") == "/documents/recognize":
+        return DOCUMENT_BODY_BYTES
+    if method == "POST" and path.rstrip("/") == "/audiobooks":
+        return STORY_PROJECT_BODY_BYTES
+    if method == "POST" and path.rstrip("/") == "/voice-profiles":
+        return VOICE_PROFILE_BODY_BYTES
+    return MAX_BODY_BYTES
 
 
 def body_error(path):
+    if path.startswith("/voice-profiles"):
+        return error_response(413, "PAYLOAD_TOO_LARGE", "Mẫu giọng tối đa 2 MiB.")
     if path.startswith("/audiobooks"):
         return error_response(413, "PAYLOAD_TOO_LARGE", "Phần tải lên vượt giới hạn cho phép.")
     return error_response(400, "TEXT_TOO_LONG", "Kích thước yêu cầu vượt quá giới hạn cho phép.")
@@ -37,6 +47,9 @@ ROUTE_PATTERNS = [
         (r"^/text/translate$", "POST", SUBMIT_FUNCTION_NAME, "text_translate"),
         (r"^/text/preview-translation$", "POST", SUBMIT_FUNCTION_NAME, "translation_preview"),
         (r"^/documents/recognize$", "POST", SUBMIT_FUNCTION_NAME, "document_ocr"),
+        (r"^/voice-profiles$", "GET", SUBMIT_FUNCTION_NAME, "voice_profiles"),
+        (r"^/voice-profiles$", "POST", SUBMIT_FUNCTION_NAME, "voice_profile_create"),
+        (r"^/voice-profiles/(?P<id>[a-f0-9]{32})$", "DELETE", SUBMIT_FUNCTION_NAME, "voice_profile_delete"),
         (r"^/synthesize$", "POST", SUBMIT_FUNCTION_NAME, "synthesize"),
         (r"^/voices$", "GET", VOICES_FUNCTION_NAME, "voices"),
         (r"^/jobs/(?P<id>[a-zA-Z0-9_\-]+)$", "GET", HISTORY_FUNCTION_NAME, "get_job"),
@@ -58,19 +71,22 @@ for story_path, methods in (
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/commit$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans$", ("GET", "POST")),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}$", ("GET",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/chapter-audio$", ("GET", "POST")),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/start$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/tick$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/pause$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/resume$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-plans/[a-f0-9]{32}/segments/[a-f0-9]{32}/retry$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/audio-progress$", ("GET",)),
-    (r"^/audiobooks/[a-f0-9]{32}/glossary$", ("GET", "PUT")),
+    (r"^/audiobooks/[a-f0-9]{32}/glossary$", ("GET", "PUT", "POST")),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans$", ("GET", "POST")),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}$", ("GET",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/(start|tick|pause|resume|approve)$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/progress$", ("GET",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/chunks/[0-9]{1,4}$", ("GET", "PUT")),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-plans/[a-f0-9]{32}/chunks/[0-9]{1,4}/retry$", ("POST",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-drafts/import/[a-f0-9]{32}/[0-9]{1,4}$", ("PUT",)),
+    (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/translation-drafts/import/[a-f0-9]{32}/commit$", ("POST",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/approved-translation(?:/[0-9]{1,4})?$", ("GET",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/approved-translation/import/[a-f0-9]{32}/[0-9]{1,4}$", ("PUT",)),
     (r"^/audiobooks/[a-f0-9]{32}/chapters/[a-f0-9]{32}/approved-translation/import/[a-f0-9]{32}/commit$", ("POST",)),

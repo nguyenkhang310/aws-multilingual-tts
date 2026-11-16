@@ -104,6 +104,10 @@ Parameters:
     Type: String
     Default: gemini-3.6-flash
     Description: Gemini model ID verified for the selected API key
+  VoiceCloneEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
   GeminiTranslationEnabled:
     Type: String
     Default: 'false'
@@ -188,6 +192,7 @@ Resources:
           GEMINI_EMOTION_ENABLED: !Ref GeminiEmotionEnabled
           GEMINI_API_PARAMETER_NAME: !Ref GeminiApiParameterName
           GEMINI_MODEL: !Ref GeminiModel
+          VOICE_CLONE_ENABLED: !Ref VoiceCloneEnabled
           GEMINI_TRANSLATION_ENABLED: !Ref GeminiTranslationEnabled
           GEMINI_TRANSLATION_TIMEOUT_SECONDS: !Ref GeminiTranslationTimeoutSeconds
           TRANSLATION_DAILY_CALL_LIMIT: !Ref TranslationDailyCallLimit

@@ -1,25 +1,28 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import Slider from '@react-native-community/slider';
 import { Action, Label } from './ui';
 import Sheet from './Sheet';
 import { StoryError, StoryChoices, storyStyles as styles, useStoryAction, useStoryPolling } from './StoryControls';
 import { useStudio } from '../state/Studio';
 import { usePlayback } from '../state/Playback';
-import { storyListeningQueue, storyQueuePages } from '../../../shared/story-playback';
+import { chapterRecording, storyListeningQueue, storyQueuePages } from '../../../shared/story-playback';
 import { storyBatchApi, storyTranslationApi } from '../lib/story-api';
 import { expressionOptions } from '../../../shared/expression';
 import type { ApprovedTranslation } from '../../../shared/story-translation';
-import type { StoryChapter, StoryPlan, StoryProgress } from '../../../shared/story';
+import type { StoryChapter, StoryChapterAudio, StoryPlan, StoryProgress } from '../../../shared/story';
 import { languageNames } from '../../../shared/languages';
 
-export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChapter; targetLang: string }) {
+export default function StoryAudio({ chapter, storyTitle, targetLang }: { chapter: StoryChapter; storyTitle: string; targetLang: string }) {
   const { colors, allLanguages } = useStudio(), playback = usePlayback();
   const { busy, error, setError, run, background } = useStoryAction();
   const [reload, setReload] = useState(0);
   const [ready, setReady] = useState(false), [configure, setConfigure] = useState(false);
   const [plans, setPlans] = useState<StoryPlan[]>([]), [plan, setPlan] = useState<StoryPlan | null>(null);
   const [progress, setProgress] = useState<StoryProgress | null>(null), [approved, setApproved] = useState<ApprovedTranslation | null>(null);
+  const [chapterAudio, setChapterAudio] = useState<StoryChapterAudio | null>(null);
   const [provider, setProvider] = useState<'azure' | 'gemini'>('azure'), [choice, setVoice] = useState('');
   const [speed, setSpeed] = useState(0.9), [style, setStyle] = useState('neutral'), [intensity, setIntensity] = useState(1);
   const [readLang, setReadLang] = useState(chapter.sourceLang);
@@ -34,7 +37,8 @@ export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChap
     let live = true;
     void Promise.all([storyBatchApi.plans(chapter), storyTranslationApi.approvedOrNull(chapter)]).then(async ([list, saved]) => {
       const latest = list.items[0] ?? null, state = latest ? await storyBatchApi.progress(chapter, latest.planId) : null;
-      if (live) { setPlans(list.items); setPlan(latest); setProgress(state); setCursor(state?.nextCursor ?? null); setApproved(saved); setReady(true); }
+      const audio = latest ? await storyBatchApi.chapterAudio(chapter, latest.planId) : null;
+      if (live) { setPlans(list.items); setPlan(latest); setProgress(state); setCursor(state?.nextCursor ?? null); setApproved(saved); setChapterAudio(audio); setReady(true); }
     }).catch(reason => { if (live) setError(reason.message); });
     return () => { live = false; };
   }, [chapter, setError, reload]);
@@ -58,6 +62,9 @@ export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChap
   }, [progress, now]);
   const active = progress?.status === 'RUNNING' || progress?.status === 'PAUSING';
   const statuses: Record<string, string> = { DRAFT: 'Chờ xác nhận', RUNNING: 'Đang tạo audio', PAUSING: 'Đang dừng', PAUSED: 'Đã tạm dừng', COMPLETED: 'Hoàn tất', STALE: 'Nội dung đã thay đổi', BLOCKED_QUOTA: 'Đã hết hạn mức', NEEDS_ATTENTION: 'Cần kiểm tra' };
+  const itemError = (code?: string | null) => code === 'GEMINI_TTS_QUOTA'
+    ? 'Gemini đang giới hạn lượt hoặc hết quota. Thử lại sau, hoặc tạo kế hoạch mới bằng Azure Speech.' : code ?? 'Lỗi tạm thời';
+  const providerQuotaFailed = progress?.items.some(item => item.errorCode === 'GEMINI_TTS_QUOTA') ?? false;
   const setup = <>
     <View style={{ gap: 18 }}><Label size={20} weight="600">Giọng kể</Label>
       <View style={styles.row}><Action disabled={busy || active} primary={!useApproved} onPress={() => { setUseApproved(false); setStyle('neutral'); setIntensity(1); }}>Bản gốc</Action>
@@ -68,7 +75,7 @@ export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChap
         const created = await storyBatchApi.create(chapter, { provider, voice, speed, style, styleIntensity: style === 'neutral' ? 1 : intensity,
           translateTo: !useApproved && outputLang !== chapter.sourceLang ? outputLang : null,
           textSource: useApproved ? 'approved_translation' : 'original' });
-        setPlan(created); setPlans(items => [created, ...items.filter(item => item.planId !== created.planId)]);
+        setPlan(created); setChapterAudio(null); setPlans(items => [created, ...items.filter(item => item.planId !== created.planId)]);
         const state = await storyBatchApi.progress(chapter, created.planId); setProgress(state); setCursor(state.nextCursor); setSheet('confirm');
       })}>Tạo giọng kể</Action>
     </View>
@@ -89,7 +96,7 @@ export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChap
       <View style={styles.row}>
         {progress.status === 'DRAFT' && <Action disabled={busy} onPress={() => setSheet('confirm')}>Xác nhận tạo</Action>}
         {progress.status === 'RUNNING' && <Action disabled={busy} onPress={() => void run(async () => apply(await storyBatchApi.pause(chapter, plan.planId)))}>Tạm dừng</Action>}
-        {progress.uncertain === 0 && ['PAUSED', 'BLOCKED_QUOTA', 'NEEDS_ATTENTION'].includes(progress.status) && <Action disabled={busy} onPress={() => void run(async () => apply(await storyBatchApi.resume(chapter, plan.planId)))}>Tiếp tục</Action>}
+        {progress.uncertain === 0 && !providerQuotaFailed && ['PAUSED', 'BLOCKED_QUOTA', 'NEEDS_ATTENTION'].includes(progress.status) && <Action disabled={busy} onPress={() => void run(async () => apply(await storyBatchApi.resume(chapter, plan.planId)))}>Tiếp tục</Action>}
         <Action disabled={busy} onPress={() => void run(async () => apply(await storyBatchApi.progress(chapter, plan.planId)))}>Làm mới</Action>
       </View>
       {progress.items.map(item => <View key={item.segmentId} style={[styles.row, { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10 }]}>
@@ -105,11 +112,37 @@ export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChap
               await playback.playQueue(queue);
             }
           })}>{playback.current?.jobId === item.jobId && playback.playing ? 'Đang phát' : 'Nghe'}</Action>
-          : <Label size={13} muted>{item.status === 'FAILED' ? 'Lỗi' : item.status === 'UNCERTAIN' ? 'Cần đối soát' : item.status === 'QUEUED' ? 'Đang chờ' : 'Đang xử lý'}</Label>}
+          : <Label size={13} muted>{item.status === 'FAILED' ? itemError(item.errorCode) : item.status === 'UNCERTAIN' ? 'Cần đối soát' : item.status === 'QUEUED' ? 'Đang chờ' : 'Đang xử lý'}</Label>}
         {item.status === 'FAILED' && item.retryable && <Action disabled={busy || now < (item.nextRetryAt ?? 0) * 1000}
           onPress={() => void run(async () => apply(await storyBatchApi.retry(chapter, plan.planId, item.segmentId)))}>Thử lại</Action>}
       </View>)}
       {cursor && <Action disabled={busy} onPress={() => void run(async () => { const next = await storyBatchApi.progress(chapter, plan.planId, cursor); apply(next); setCursor(next.nextCursor); })}>Xem thêm đoạn</Action>}
+      {progress.done === progress.total && progress.total > 0 && <View style={styles.row}>
+        {chapterAudio?.status !== 'DONE' && <Action disabled={busy} onPress={() => void run(async () => {
+          let result = await storyBatchApi.chapterAudio(chapter, plan.planId);
+          for (let step = 0; step < 40 && result.status !== 'DONE'; step++)
+            result = await storyBatchApi.advanceChapterAudio(chapter, plan.planId);
+          setChapterAudio(result);
+        })}>{busy ? 'Đang chuẩn bị MP3 chương…' : 'Tạo MP3 chương'}</Action>}
+        {chapterAudio?.status === 'DONE' && chapterAudio.audioUrl && <Action icon="play" disabled={busy} onPress={() => void run(async () => {
+          if (playback.current?.jobId === `chapter-${plan.planId}`) await playback.toggle();
+          else await playback.play(chapterRecording(chapter, plan, chapterAudio, `Chương ${chapter.chapterNumber} - ${storyTitle}`));
+        })}>{playback.current?.jobId === `chapter-${plan.planId}` && playback.playing ? 'Tạm dừng' : 'Nghe cả chương'}</Action>}
+        {chapterAudio?.status === 'DONE' && <Action disabled={busy} onPress={() => void run(async () => {
+          const fresh = await storyBatchApi.chapterAudio(chapter, plan.planId);
+          if (!fresh.downloadUrl) throw new Error('MP3 chương chưa sẵn sàng để tải.');
+          if (Platform.OS === 'web' || !(await Sharing.isAvailableAsync())) { await Linking.openURL(fresh.downloadUrl); return; }
+          if (!FileSystem.cacheDirectory) throw new Error('Thiết bị chưa có thư mục tạm để tải MP3.');
+          const safeTitle = storyTitle.replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim() || 'truyen';
+          const path = `${FileSystem.cacheDirectory}chuong ${String(chapter.chapterNumber).padStart(2, '0')} - ${safeTitle}.mp3`;
+          try {
+            const downloaded = await FileSystem.downloadAsync(fresh.downloadUrl, path);
+            if (downloaded.status !== 200) throw new Error('Chưa tải được MP3 chương.');
+            await Sharing.shareAsync(downloaded.uri, { mimeType: 'audio/mpeg', UTI: 'public.mp3' });
+          } finally { await FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {}); }
+        })}>Tải MP3 chương</Action>}
+      </View>}
+      {chapterAudio?.status === 'MISSING' && <Label style={{ color: colors.danger }}>{chapterAudio.error}</Label>}
     </View>}
     {!!progress?.done && <><Action icon="settings" onPress={() => setConfigure(value => !value)}>{configure ? 'Ẩn cài đặt giọng' : 'Giọng kể & tạo mới'}</Action>{configure && setup}</>}
     {!!plans.length && <Action disabled={busy || active} onPress={() => setSheet('plans')}>Các lần tạo ({plans.length})</Action>}
@@ -136,7 +169,8 @@ export default function StoryAudio({ chapter, targetLang }: { chapter: StoryChap
       {sheet === 'voices' && <StoryChoices search value={voice} items={(language?.voices ?? []).map(item => ({ value: item.id, label: item.name ?? item.id }))}
         onChange={value => { setVoice(value); setStyle('neutral'); setIntensity(1); setSheet('settings'); }} />}
       {sheet === 'plans' && <>{plans.map(item => <Action key={item.planId} onPress={() => void run(async () => {
-      const state = await storyBatchApi.progress(chapter, item.planId); setPlan(item); setProgress(state); setCursor(state.nextCursor); setSheet(null);
+      const state = await storyBatchApi.progress(chapter, item.planId); setPlan(item); setProgress(state); setCursor(state.nextCursor);
+      setChapterAudio(await storyBatchApi.chapterAudio(chapter, item.planId)); setSheet(null);
     })}>{new Date(item.createdAt).toLocaleString('vi-VN')} · {item.voice}</Action>)}</>}
     </Sheet>
   </>;

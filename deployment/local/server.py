@@ -78,6 +78,7 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
         'GEMINI_API_KEY': '', 'GEMINI_MODEL': '', 'GEMINI_TYPO_ENABLED': 'false', 'GEMINI_TIMEOUT_SECONDS': '8', 'GEMINI_TRANSLATION_ENABLED': 'false', 'GEMINI_EMOTION_ENABLED': 'false',
         'GEMINI_OCR_ENABLED': 'false', 'GEMINI_OCR_MODEL': 'gemini-3.5-flash-lite', 'OCR_DAILY_CALL_LIMIT': '100',
         'GEMINI_TTS_ENABLED': 'false', 'GEMINI_TTS_MODEL': 'gemini-3.8-flash-tts', 'GEMINI_TTS_DAILY_CALL_LIMIT': '100',
+        'VOICE_CLONE_ENABLED': 'false', 'VOICE_CLONE_MODEL_DIR': '', 'VOICE_CLONE_CACHE_DIR': '',
         'DEMO_TOKEN': '', 'MAX_CHARS': '10000', 'DAILY_CHAR_LIMIT': '30000', 'STORY_MAX_ACTIVE': '1',
         'STORY_TRANSLATION_DAILY_CHARS': '100000',
     }
@@ -90,8 +91,20 @@ def settings(path=ENV_FILE, *, host=None, public_url=None):
         result['LOCAL_PUBLIC_URL'] = public_url
     for name in result:
         result[name] = result[name].strip()
+    if result['GEMINI_API_KEY']:
+        from gemini_rotation import parse_keys
+        parse_keys(result['GEMINI_API_KEY'])
     if result['GEMINI_TTS_ENABLED'] not in {'true', 'false'}:
         raise ValueError('GEMINI_TTS_ENABLED dùng true hoặc false.')
+    if result['VOICE_CLONE_ENABLED'] not in {'true', 'false'}:
+        raise ValueError('VOICE_CLONE_ENABLED dùng true hoặc false.')
+    if result['VOICE_CLONE_ENABLED'] == 'true':
+        for name in ('VOICE_CLONE_MODEL_DIR', 'VOICE_CLONE_CACHE_DIR'):
+            path = Path(result[name]).expanduser()
+            path = path if path.is_absolute() else ROOT / path
+            if not path.is_dir():
+                raise ValueError(f'{name} cần trỏ tới thư mục VieNeu đã tải trong repo.')
+            result[name] = str(path.resolve())
     if not result['GEMINI_TIMEOUT_SECONDS'].isdigit() or not 1 <= int(result['GEMINI_TIMEOUT_SECONDS']) <= 8:
         raise ValueError('GEMINI_TIMEOUT_SECONDS từ 1 đến 8 giây.')
     if result['GEMINI_TTS_ENABLED'] == 'true' and (not result['GEMINI_API_KEY'] or result['GEMINI_TTS_MODEL'] != 'gemini-3.8-flash-tts'):
@@ -219,6 +232,9 @@ class Runtime:
             'GEMINI_TTS_ENABLED': self.values.get('GEMINI_TTS_ENABLED', 'false'),
             'GEMINI_TTS_MODEL': self.values.get('GEMINI_TTS_MODEL', 'gemini-3.8-flash-tts'),
             'GEMINI_TTS_DAILY_CALL_LIMIT': self.values.get('GEMINI_TTS_DAILY_CALL_LIMIT', '100'),
+            'VOICE_CLONE_ENABLED': self.values['VOICE_CLONE_ENABLED'],
+            'VOICE_CLONE_MODEL_DIR': self.values['VOICE_CLONE_MODEL_DIR'],
+            'VOICE_CLONE_CACHE_DIR': self.values['VOICE_CLONE_CACHE_DIR'],
             'OCR_DAILY_CALL_LIMIT': self.values['OCR_DAILY_CALL_LIMIT'],
             'GEMINI_TRANSLATION_ENABLED': self.values['GEMINI_TRANSLATION_ENABLED'],
             'GEMINI_API_PARAMETER_NAME': '/local/gemini' if self.values['GEMINI_API_KEY'] else '',
@@ -269,6 +285,13 @@ class Runtime:
             self.router.HISTORY_FUNCTION_NAME: load_module('local_history', 'backend/m3-trung-duc/history/app.py').handler,
             self.router.STATS_FUNCTION_NAME: load_module('local_stats', 'backend/m5-trung-nghia/stats/app.py').handler,
         }
+        if self.values['GEMINI_API_KEY']:
+            from gemini_rotation import install, parse_keys
+            from providers.common import OPENER
+            import correction
+            keys = parse_keys(self.values['GEMINI_API_KEY'])
+            for opener in {id(OPENER): OPENER, id(correction._opener): correction._opener}.values():
+                self.stack.callback(install(opener, keys))
         self.router.set_lambda_invoker(lambda name, event: self.handlers[name](event, LocalContext()))
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='tts-local')
         self.stack.callback(self.executor.shutdown, wait=True)

@@ -65,7 +65,12 @@ def _claim(scope, project_id, chapter_id, plan_id):
 def _release(scope, project_id, chapter_id, plan_id, token):
     stored = store.get_run(scope, project_id, chapter_id, plan_id)
     if stored and stored[0].get("leaseToken") == token:
-        _run_change(scope, project_id, chapter_id, plan_id, {"leaseUntil": 0, "leaseToken": None})
+        try:
+            store.update_run(scope, project_id, chapter_id, plan_id,
+                             {"leaseUntil": 0, "leaseToken": None}, stored[1])
+        except StoryError as error:
+            if error.code != "REVISION_CONFLICT":
+                raise
 
 
 def _worker(text, source, target):
@@ -100,7 +105,13 @@ def tick(scope, project_id, chapter_id, plan_id):
         candidate = None
         has_failed = False
         for index, item in enumerate(items):
-            if item["status"] in {"RUNNING", "UNCERTAIN", "BLOCKED_QUOTA"}:
+            if item["status"] == "RUNNING":
+                store.update_chunk(scope, project_id, chapter_id, plan_id, item["index"],
+                                   {"status": "UNCERTAIN", "errorCode": "TRANSLATION_UNCERTAIN"},
+                                   item["version"])
+                _run_change(scope, project_id, chapter_id, plan_id, {"status": "NEEDS_ATTENTION"})
+                return progress(scope, project_id, chapter_id, plan_id)
+            if item["status"] in {"UNCERTAIN", "BLOCKED_QUOTA"}:
                 _run_change(scope, project_id, chapter_id, plan_id, {"status": "NEEDS_ATTENTION"})
                 return progress(scope, project_id, chapter_id, plan_id)
             if item["status"] == "QUEUED" and candidate is None:
@@ -112,11 +123,12 @@ def tick(scope, project_id, chapter_id, plan_id):
                         {"status": "NEEDS_ATTENTION" if has_failed else "READY_FOR_REVIEW"})
             return progress(scope, project_id, chapter_id, plan_id)
         item = store.get_chunk(scope, project_id, chapter_id, plan_id, candidate)[0]
-        store.update_chunk(scope, project_id, chapter_id, plan_id, candidate,
-                           {"status": "RUNNING", "attempts": item["attempts"] + 1})
+        running = store.update_chunk(scope, project_id, chapter_id, plan_id, candidate,
+                                     {"status": "RUNNING", "attempts": item["attempts"] + 1}, item["version"])
         limit = int(os.environ.get("STORY_TRANSLATION_DAILY_CHARS", "100000"))
         if not store.reserve_translation_chars(scope, len(item["sourceText"]), limit):
-            store.update_chunk(scope, project_id, chapter_id, plan_id, candidate, {"status": "BLOCKED_QUOTA"})
+            store.update_chunk(scope, project_id, chapter_id, plan_id, candidate,
+                               {"status": "BLOCKED_QUOTA"}, running["version"])
             _run_change(scope, project_id, chapter_id, plan_id, {"status": "BLOCKED_QUOTA"})
             return progress(scope, project_id, chapter_id, plan_id)
         protected, mapping = protect(item["sourceText"], plan["glossary"])
@@ -127,17 +139,20 @@ def tick(scope, project_id, chapter_id, plan_id):
             state = "UNCERTAIN" if uncertain else "BLOCKED_QUOTA" if error.code == "TRANSLATION_QUOTA_EXCEEDED" else "FAILED"
             store.update_chunk(scope, project_id, chapter_id, plan_id, candidate,
                                {"status": state, "errorCode": error.code,
-                                "nextRetryAt": int(time.time()) + 30 if error.code == "TRANSLATION_BUSY" else None})
+                                "nextRetryAt": int(time.time()) + 30 if error.code == "TRANSLATION_BUSY" else None},
+                               running["version"])
             _run_change(scope, project_id, chapter_id, plan_id,
                         {"status": "BLOCKED_QUOTA" if state == "BLOCKED_QUOTA" else "NEEDS_ATTENTION"})
             return progress(scope, project_id, chapter_id, plan_id)
         except Exception:
             store.update_chunk(scope, project_id, chapter_id, plan_id, candidate,
-                               {"status": "UNCERTAIN", "errorCode": "TRANSLATION_UNCERTAIN"})
+                               {"status": "UNCERTAIN", "errorCode": "TRANSLATION_UNCERTAIN"},
+                               running["version"])
             _run_change(scope, project_id, chapter_id, plan_id, {"status": "NEEDS_ATTENTION"})
             return progress(scope, project_id, chapter_id, plan_id)
         store.update_chunk(scope, project_id, chapter_id, plan_id, candidate,
-                           {"status": "DONE", "translatedText": translated, "errorCode": None})
+                           {"status": "DONE", "translatedText": translated, "errorCode": None},
+                           running["version"])
         return progress(scope, project_id, chapter_id, plan_id)
     finally:
         _release(scope, project_id, chapter_id, plan_id, token)

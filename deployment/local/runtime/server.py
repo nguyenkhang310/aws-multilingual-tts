@@ -22,8 +22,8 @@ from urllib.parse import parse_qs, quote, urlencode, urlsplit
 import urllib.error
 import urllib.request
 
-ROOT = Path(__file__).resolve().parents[2]
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
+ROOT = HERE.parents[1]
 ENV_FILE = HERE / '.env.local'
 DATA = HERE / 'data'
 
@@ -63,7 +63,7 @@ def load_module(name, path):
     return module
 
 
-gemini_rotation = load_module('tts_local_gemini_rotation', 'deployment/local/gemini_rotation.py')
+gemini_rotation = load_module('tts_local_gemini_rotation', 'deployment/local/runtime/gemini_rotation.py')
 
 
 def settings(path=ENV_FILE, *, host=None, public_url=None):
@@ -257,7 +257,7 @@ class Runtime:
         self.aws, self.config, self.storage, self.voices = aws, config, storage, voices
         self.story_covers, self.story_projects = story_covers, story_projects
         self.s3_cover_begin = story_covers.begin
-        self.local_covers = load_module('local_story_covers', 'deployment/local/story_covers.py')
+        self.local_covers = load_module('local_story_covers', 'deployment/local/runtime/story_covers.py')
         self.s3 = LockedClient(boto3.client('s3', region_name='us-east-1'))
         for bucket in ['tts-local-jobs', 'tts-local-audio']:
             self.s3.create_bucket(Bucket=bucket)
@@ -555,7 +555,7 @@ def main():
             with ThreadingHTTPServer((values['LOCAL_HOST'], int(values['LOCAL_PORT'])), handler_class(runtime)) as server:
                 print(f"Local API: {values['LOCAL_PUBLIC_URL']} | Dữ liệu trong RAM, mất khi tắt. Không dùng AWS thật.", flush=True)
                 if not (DATA / 'voices.azure.json').is_file():
-                    print('Chưa có catalog. Điền key rồi chạy: .venv/bin/python deployment/local/server.py voices', flush=True)
+                    print('Chưa có catalog. Điền key rồi chạy: .venv/bin/python deployment/local/runtime/server.py voices', flush=True)
                 server.serve_forever()
     except KeyboardInterrupt:
         print('Đã dừng local API.')

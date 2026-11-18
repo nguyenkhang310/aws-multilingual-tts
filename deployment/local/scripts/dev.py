@@ -20,9 +20,11 @@ from urllib.parse import urlsplit
 from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
+LOCAL_ROOT = Path(__file__).resolve().parents[1]
+ROOT = LOCAL_ROOT.parents[1]
+sys.path.insert(0, str(LOCAL_ROOT / 'runtime'))
 import server
 
-ROOT = server.ROOT
 WEB = ROOT / 'frontend/web'
 APP = ROOT / 'frontend/app'
 
@@ -234,7 +236,7 @@ def main():
                 else:
                     print('Chưa có Speech key/catalog. Có thể xem UI; tạo MP3 cần điền key rồi mở lại.', flush=True)
             api_url = f'http://127.0.0.1:{port}'
-            services.start('API', [sys.executable, '-u', str(server.HERE / 'server.py'), '--env-file',
+            services.start('API', [sys.executable, '-u', str(server.HERE / 'runtime' / 'server.py'), '--env-file',
                                    str(args.env_file.resolve()), '--host', values['LOCAL_HOST'], '--public-url', public_url])
             services.ready(api_url + '/health')
         env = frontend_env(os.environ, api_url, ip)

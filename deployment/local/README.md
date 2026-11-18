@@ -1,5 +1,14 @@
 # Chạy web/app với backend local
 
+## Bố cục thư mục
+
+- `scripts/`: launcher `dev.sh`/`dev.py` cho lệnh `npm run dev`.
+- `runtime/`: API local và adapter Moto (`server.py`, `story_covers.py`, `gemini_rotation.py`).
+- `README.md`, `.env.example`, `.env.local`, `requirements.txt`: hướng dẫn, cấu hình và dependencies; giữ ở gốc để dễ tìm.
+- `data/` và `voice/`: catalog/model local được tạo hoặc tải khi cần; không đưa dữ liệu riêng và model vào Git.
+
+Các test script thử riêng của thư mục local đã được bỏ theo yêu cầu dọn repo. Kiểm thử runtime dùng suite M1 tại `backend/m1-minh-ly/tests/`.
+
 Không cần mở AWS Academy. Runtime dùng lại router M1, submit M5, worker/catalog M2 và repository/history M3; **Moto mô phỏng S3/SSM trong RAM**, dispatch dùng hàng đợi trên máy. Không tạo tài nguyên AWS. Khi bạn bấm tạo giọng/dịch, backend gọi Azure thật bằng key trong `.env.local`, nên vẫn dùng quota Azure.
 
 ## Chạy cả ba bằng một lệnh
@@ -166,13 +175,13 @@ DEMO_TOKEN=local-demo
 Lệnh sau gọi **Azure voices API thật**, không tạo MP3 và không gọi AWS. Không dùng danh sách giọng tự viết để thay bước này:
 
 ```bash
-.venv/bin/python deployment/local/server.py voices
+.venv/bin/python deployment/local/runtime/server.py voices
 ```
 
 Catalog được lưu tại `deployment/local/data/voices.azure.json`, được ignore. Không sửa hai registry triển khai của nhóm. Đổi key/resource/vùng thì lấy lại catalog. Sau đó:
 
 ```bash
-.venv/bin/python deployment/local/server.py
+.venv/bin/python deployment/local/runtime/server.py
 ```
 
 API mặc định: `http://127.0.0.1:8000`. Có thể mở `/health` để xem các cờ đã cấu hình, không có key/token trong response. Startup không tự gọi Azure. Thiếu catalog thì `/voices` trả 503, không bịa giọng; chạy lệnh lấy catalog sau khi điền key.
@@ -220,38 +229,14 @@ Local giữ bảy API nền, phần mở rộng `/text/translate` và `/document
 
 ### VieNeu nhại giọng trên local
 
-VieNeu chỉ chạy khi bật tường minh. Mô hình và WAV tham chiếu phải nằm trong `voice02-local/` ở gốc repo; không đưa vào Git. Cài thư viện vào **cùng `.venv` mà `npm run dev` dùng cho API**:
+VieNeu chỉ chạy khi bật tường minh. Cài Python package và tải model theo các lệnh trong [`voice/README.md`](voice/README.md). Mỗi thành viên chuẩn bị model riêng trong `deployment/local/voice/model/`; không đưa model, WAV, cache, môi trường Python hoặc MP3 vào Git. Backend local dùng `.venv` ở gốc repo, cùng môi trường mà `npm run dev` khởi chạy.
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install vieneu==3.8.4 --no-deps
-.\.venv\Scripts\python.exe -m pip install -r backend/m2-trung-khang/scripts/voice_clone_requirements.txt
-```
+Sau khi cài và tải model, bật `VOICE_CLONE_ENABLED=true` cùng hai đường dẫn trong `deployment/local/.env.local`, rồi khởi động lại `npm run dev`. Chọn **VieNeu · Nhại giọng** trong danh sách nguồn giọng. VieNeu chỉ đọc tiếng Việt trực tiếp; không dùng Azure/Gemini key, không dịch và không có sắc thái. Tinh chỉnh là tham số thử nghiệm, không bảo đảm một mức cụ thể sẽ làm giọng giống hơn.
 
-Nếu model chưa tải, chuẩn bị đúng revision đã ghim (khoảng 312 MiB):
-
-```powershell
-.\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/prepare_voice_clone_model.py --output-dir voice02-local\model
-```
-
-Trong `deployment/local/.env.local`, đặt:
-
-```dotenv
-VOICE_CLONE_ENABLED=true
-VOICE_CLONE_MODEL_DIR=voice02-local\model\hf-cache\hub\models--pnnbao-ump--VieNeu-TTS-v3-Turbo\snapshots\61b85e3d937fbbacb387714180e8182823512523
-VOICE_CLONE_CACHE_DIR=voice02-local\model\hf-cache
-```
-
-Chạy `npm run dev` tại gốc repo, nhập `DEMO_TOKEN` trong Cài đặt, chọn **VieNeu · Nhại giọng** và mở danh sách giọng để thêm WAV PCM 16-bit mono/stereo dài 3–8 giây, tối đa 2 MiB. Chọn hồ sơ mới lưu để tạo giọng. VieNeu chỉ đọc tiếng Việt trực tiếp; không dùng Azure/Gemini key, không dịch và không có sắc thái.
-
-Để so sánh, dùng cùng một câu ngắn: tạo bản đầu, nghe trong **Bản thu**, đổi từng điều chỉnh rồi tạo lại. Bản cũ được giữ để nghe lại. **Bám cách nói mẫu** dùng thông tin ngữ điệu WAV; **Lọc nhiễu mẫu** phù hợp khi WAV có tiếng nền; **Độ ổn định** tăng thì giảm biến thiên khi tạo. Đây là các núm thử nghiệm của model, không phải thước đo độ giống và không bảo đảm một hướng chỉnh nào làm giọng giống hơn. Muốn chạy trên điện thoại, giữ API chạy trên máy và dùng cùng Wi-Fi/QR Expo như phần trên.
-
-`voice02-local/` phải có sẵn trước khi bật cờ. Nếu đường dẫn model sai hoặc thiếu thư viện, hãy tắt `VOICE_CLONE_ENABLED` trong env và khởi động lại; các provider Azure/Gemini vẫn tách riêng.
-
-Ảnh bìa Audio Truyện trong local cũng ở Moto trong RAM. Dev server cấp URL upload/đọc local có chữ ký HMAC ngắn hạn thay cho URL S3, nên thử chọn/tải/đổi/xóa ảnh không gửi ảnh lên AWS. Local bridge kiểm token upload và giới hạn 5 MiB; API M3 vẫn kiểm lại bytes, MIME và pixel khi xác nhận. Dữ liệu/URL ảnh mất khi tắt server. Kiểm bằng `python -m unittest discover -s deployment/local -p 'test_*.py'` từ gốc repo với `.venv` đã cài requirements local.
+Ảnh bìa Audio Truyện trong local cũng ở Moto trong RAM. Dev server cấp URL upload/đọc local có chữ ký HMAC ngắn hạn thay cho URL S3, nên thử chọn/tải/đổi/xóa ảnh không gửi ảnh lên AWS. Local bridge kiểm token upload và giới hạn 5 MiB; API M3 vẫn kiểm lại bytes, MIME và pixel khi xác nhận. Dữ liệu/URL ảnh mất khi tắt server. Kiểm thử adapter local thuộc suite M1 tại `backend/m1-minh-ly/tests/`; cài requirements local trước khi chạy suite đó.
 
 ```bash
 .venv/bin/python -m unittest discover -s backend/m1-minh-ly/tests
-.venv/bin/python -m unittest discover -s deployment/local -p 'test_*.py'
 npm --prefix frontend/web run test:ui
 npm --prefix frontend/web run build
 ```

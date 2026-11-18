@@ -349,6 +349,13 @@ select { cursor: pointer; }
 .voice-card p { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; margin-top: 9px; color: var(--muted); }
 .voice-card-bottom { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 25px; }
 .voice-card-bottom small { color: var(--muted); font-size: 12px; }
+.voice-card-clone { padding: 15px; }
+.voice-card-clone .voice-card-top { margin-bottom: 10px; }
+.voice-card-clone .voice-card-bottom { margin-top: 14px; }
+.voice-clone-panel .clone-file-status { color: var(--muted); overflow-wrap: anywhere; }
+.clone-spinner { display: inline-block; width: 15px; height: 15px; margin-right: 8px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: clone-spin .8s linear infinite; }
+@keyframes clone-spin { to { transform: rotate(360deg); } }
+.voice-clone-panel .primary-button:disabled .clone-spinner { opacity: .8; }
 .record-list { border: 1px solid var(--line); border-radius: 12px; background: #fff9; overflow: hidden; }
 .record-row { display: flex; align-items: center; gap: 17px; padding: 20px; border-bottom: 1px solid var(--line); }
 .record-row:last-child { border-bottom: 0; }
@@ -821,13 +828,17 @@ select { cursor: pointer; }
 .voice-clone-file button { justify-content: flex-start; max-width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .voice-clone-panel .clone-consent { display: flex; align-items: flex-start; gap: 9px; font-size: 12px; line-height: 1.5; }
 .voice-clone-panel .clone-consent input { margin-top: 2px; accent-color: var(--blue); }
-.voice-clone-panel .clone-privacy { color: var(--muted); }
-.voice-clone-panel .clone-message { color: var(--blue); overflow-wrap: anywhere; }
+.voice-clone-panel .clone-message { overflow-wrap: anywhere; }
+.voice-clone-panel .clone-message.success { color: var(--blue); }
+.voice-clone-panel .clone-message.error { color: var(--danger, #c04c4c); }
 .voice-clone-panel ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .voice-clone-panel li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding-top: 8px; border-top: 1px solid var(--line); }
 .voice-clone-panel li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.voice-clone-tuning { padding: 14px; margin: 10px 0; }
-.voice-clone-tuning .setting-field { border: 0; padding: 4px 0; }
+.voice-clone-tuning { gap: 6px; padding: 10px; margin: 2px 0 6px; }
+.voice-clone-tuning h3 { font-size: 13px; }
+.voice-clone-tuning .preference-row { gap: 8px; padding: 7px 0; border-bottom: 0; }
+.voice-clone-tuning .preference-row strong { font-size: 13px; }
+.voice-clone-tuning .setting-field { margin: 0; border: 0; padding: 2px 0; }
 .story-read-language { display: grid; gap: 8px; margin-bottom: 16px; font-size: 14px; }
 .story-read-language select { min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); }
 .story-audio-source { display: flex; gap: 10px; align-items: center; font-size: 14px; }

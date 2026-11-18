@@ -52,7 +52,7 @@ export function temperatureFromStability(stability: number) {
 }
 
 export function inspectReferenceWav(bytes: Uint8Array) {
-  if (bytes.length < 44 || bytes.length > 2 * 1024 * 1024) throw new Error('Mẫu cần là WAV dưới 2 MiB.');
+  if (bytes.length < 44) throw new Error('Mẫu cần là WAV PCM đầy đủ.');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const text = (offset: number) => String.fromCharCode(...bytes.subarray(offset, offset + 4));
   if (text(0) !== 'RIFF' || text(8) !== 'WAVE' || view.getUint32(4, true) + 8 > bytes.length)
@@ -69,7 +69,10 @@ export function inspectReferenceWav(bytes: Uint8Array) {
     offset += 8 + size + (size % 2);
   }
   const seconds = dataSize / (rate * channels * (bits / 8));
-  if (format !== 1 || bits !== 16 || ![1, 2].includes(channels) || !rate || seconds < 3 || seconds > 8)
-    throw new Error('Cần WAV PCM 16-bit, mono hoặc stereo, dài 3–8 giây.');
+  if (format !== 1 || bits !== 16 || ![1, 2].includes(channels) || !rate)
+    throw new Error('Cần WAV PCM 16-bit, mono hoặc stereo.');
+  if (seconds < 3) throw new Error('Mẫu giọng cần dài ít nhất 3 giây.');
+  if (seconds > 60) throw new Error('Mẫu giọng vượt quá thời lượng tối đa 60 giây.');
+  if (bytes.length > 2 * 1024 * 1024) throw new Error('Mẫu WAV vượt quá dung lượng tối đa 2 MiB.');
   return seconds;
 }

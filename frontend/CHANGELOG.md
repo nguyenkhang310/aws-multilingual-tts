@@ -1,5 +1,11 @@
 # CHANGELOG — M4
 
+## 2026-11-18 — Dùng toàn bộ mẫu nhại giọng tối đa 60 giây
+
+- Web gửi toàn bộ audio sau khi chuyển thành WAV PCM 16 kHz mono. Mã VieNeu v3 Turbo tự cắt mẫu tham chiếu còn tối đa 8 giây đầu khi suy luận; phần sau không tạo thêm lợi ích cho model hiện tại. Web báo riêng mẫu dưới 3 giây, quá 60 giây, sai định dạng hoặc vượt dung lượng.
+- App cập nhật giới hạn hiển thị 3–60 giây, bỏ dòng về vùng dùng chung mã demo và tô thông báo lỗi bằng màu lỗi thay vì màu thành công. API M5 và smoke validator M2 cùng nhận 3–60 giây.
+- Chưa chạy tests/build và chưa thử suy luận VieNeu với mẫu 60 giây; chưa gọi AWS/provider, deploy hoặc commit.
+
 ## 2026-11-17 — Gộp M5, sửa lỗi tích hợp và nghiệm thu local
 
 - Gộp đủ 33 commit của Nghĩa tới `082f223`, giữ lịch sử và các tính năng ghép MP3 chương, backup draft/thuật ngữ, hồ sơ giọng VieNeu. Giữ riêng lựa chọn Azure/Gemini, kết quả dịch, phiên soạn, Liquid Glass, animation và chiều cao sidebar gọn từ M4.

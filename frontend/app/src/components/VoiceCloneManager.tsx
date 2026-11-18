@@ -53,7 +53,7 @@ export default function VoiceCloneManager({ onChanged }: { onChanged: () => Prom
     })(); } },
   ]);
   return <View style={{ gap: 12, padding: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface }}>
-    <View><Label weight="600">Hồ sơ nhại giọng</Label><Label size={12} muted>WAV 3–8 giây, ít nhiễu và chỉ có một người nói.</Label></View>
+    <View><Label weight="600">Hồ sơ nhại giọng</Label><Label size={12} muted>WAV 3–60 giây · tối đa 2 MiB · ít nhiễu, một người nói.</Label></View>
     <TextInput accessibilityLabel="Tên hồ sơ giọng" value={name} onChangeText={setName} maxLength={40} placeholder="Ví dụ: Giọng kể của tôi"
       placeholderTextColor={colors.faint} editable={!busy} style={{ minHeight: 44, borderWidth: 1, borderColor: colors.line, borderRadius: 12, paddingHorizontal: 12, color: colors.text }} />
     <Action icon="upload" disabled={busy} onPress={() => void choose()}>{sample?.fileName ?? 'Chọn tệp WAV'}</Action>
@@ -61,8 +61,7 @@ export default function VoiceCloneManager({ onChanged }: { onChanged: () => Prom
       style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9 }}><Icon name={consent ? 'check' : 'close'} color={consent ? colors.blue : colors.secondary} size={17} />
       <Label size={12} muted style={{ flex: 1 }}>Mẫu là giọng của tôi hoặc tôi có quyền sử dụng.</Label></Pressable>
     <Action primary disabled={busy || !name.trim() || !sample || !consent} onPress={() => void save()}>{busy ? 'Đang lưu…' : 'Lưu hồ sơ giọng'}</Action>
-    <Label size={11} muted>Hồ sơ nằm trong vùng dùng chung của mã demo; người khác dùng cùng mã có thể thấy hoặc xóa.</Label>
-    {!!error && <Label size={12} style={{ color: error.startsWith('Đã lưu') || error.startsWith('Mẫu ') ? colors.blue : colors.danger }}>{error}</Label>}
+    {!!error && <Label size={12} style={{ color: error === 'Đã lưu hồ sơ.' ? colors.blue : colors.danger }}>{error}</Label>}
     {profiles.map(profile => <View key={profile.voiceProfileId} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <Label style={{ flex: 1 }}>{profile.name}</Label><Action disabled={busy} onPress={() => remove(profile)}>Xóa</Action></View>)}
   </View>;

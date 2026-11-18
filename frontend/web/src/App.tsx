@@ -351,7 +351,9 @@ export default function App() {
           {page !== 'translation' && <Select label="Lọc ngôn ngữ giọng đọc" value={languageFilter} onValueChange={setLanguageFilter}
             options={[{ value: "all", label: "Tất cả ngôn ngữ" }, ...studio.languages.map((l) => ({ value: l.lang, label: languageNames[l.lang] || l.lang }))]} />}
         </div>
-        {studio.provider === 'vieneu' && !DEMO && <VoiceCloneManager disabled={studio.busy} onChanged={studio.loadVoices} />}
+        {studio.provider === 'vieneu' && !DEMO && <VoiceCloneManager disabled={studio.busy} onChanged={async () => {
+          setQuery(''); setLanguageFilter('all'); return studio.loadVoices();
+        }} />}
         {studio.voiceError ? (
           <div className="inline-error" role="alert">
             <p>{studio.voiceError}</p>
@@ -368,7 +370,7 @@ export default function App() {
           <div className="voice-grid">
             {visibleVoices.map((v) => (
               <article
-                className={`voice-card ${studio.language?.lang === v.lang && studio.voice === v.id ? "selected" : ""}`}
+                className={`voice-card ${v.provider === 'vieneu' ? 'voice-card-clone' : ''} ${studio.language?.lang === v.lang && studio.voice === v.id ? "selected" : ""}`}
                 key={`${v.lang}-${v.id}`}
               >
                 <div className="voice-card-top">
@@ -384,7 +386,7 @@ export default function App() {
                 <p>
                   {languageNames[v.lang] || v.lang}
                   <span>·</span>
-                  {v.gender === "F" ? "Nữ" : v.gender === "M" ? "Nam" : "Giọng đọc"}
+                  {v.provider === 'vieneu' ? 'Giọng nhại' : v.gender === "F" ? "Nữ" : v.gender === "M" ? "Nam" : "Giọng đọc"}
                   {!!v.styles?.length && <><span>·</span>Có sắc thái</>}
                 </p>
                 <div className="voice-card-bottom">
@@ -789,8 +791,6 @@ export default function App() {
                       </Button>
                     </div>
                   )}
-                  {page === "studio" && <Toggle label="Kiểm tra chính tả bằng AI" description="Duyệt gợi ý trước khi tạo giọng."
-                    checked={studio.checkSpelling} onChange={studio.setCheckSpelling} />}
                   {page === 'studio' && studio.provider === 'vieneu' && <section className="voice-clone-tuning" aria-label="Tinh chỉnh giọng nhại">
                     <h3>Tinh chỉnh giọng nhại</h3>
                     <Toggle label="Bám cách nói mẫu"
@@ -805,6 +805,8 @@ export default function App() {
                       <div className="range-labels"><span>Biến thiên hơn</span><span>Ổn định hơn</span></div>
                     </div>
                   </section>}
+                  {page === "studio" && <Toggle label="Kiểm tra chính tả bằng AI" description="Duyệt gợi ý trước khi tạo giọng."
+                    checked={studio.checkSpelling} onChange={studio.setCheckSpelling} />}
                   {studio.provider !== 'vieneu' && <div className="setting-field">
                     <label htmlFor="speaking-style">Sắc thái</label>
                     <Select id="speaking-style" label="Sắc thái" value={studio.style} onValueChange={studio.setStyle}

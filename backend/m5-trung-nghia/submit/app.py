@@ -32,6 +32,7 @@ from tts_common import voice_profiles
 
 AUTO_LANGS = {None, "", "auto"}
 STORY_ID = re.compile(r"^[a-f0-9]{32}$")
+VOICE_REFERENCE_MAX_BYTES = 2 * 1024 * 1024
 
 
 class InvalidRequest(Exception):
@@ -316,19 +317,25 @@ def _voice_profiles(event):
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 40 or body.get("lang") != "vi-VN":
         raise InvalidRequest(400, "INVALID_INPUT", "Tên hồ sơ tối đa 40 ký tự; hiện chỉ hỗ trợ tiếng Việt.")
     try:
-        if not isinstance(encoded, str) or len(encoded) > 2_800_000:
+        if not isinstance(encoded, str):
             raise ValueError
+        if len(encoded) > 3 * 1024 * 1024:
+            raise InvalidRequest(400, "REFERENCE_AUDIO_TOO_LARGE", "Mẫu WAV vượt quá dung lượng tối đa 2 MiB.")
         audio = base64.b64decode(encoded, validate=True)
-        if len(audio) > 2 * 1024 * 1024:
-            raise ValueError
         with wave.open(io.BytesIO(audio), "rb") as sample:
             duration = sample.getnframes() / sample.getframerate()
-            if sample.getcomptype() != "NONE" or sample.getsampwidth() != 2 or sample.getnchannels() not in (1, 2) or not 3 <= duration <= 8:
+            if duration > 60:
+                raise InvalidRequest(400, "REFERENCE_AUDIO_TOO_LONG", "Mẫu giọng vượt quá thời lượng tối đa 60 giây.")
+            if duration < 3:
+                raise InvalidRequest(400, "REFERENCE_AUDIO_TOO_SHORT", "Mẫu giọng cần dài ít nhất 3 giây.")
+            if len(audio) > VOICE_REFERENCE_MAX_BYTES:
+                raise InvalidRequest(400, "REFERENCE_AUDIO_TOO_LARGE", "Mẫu WAV vượt quá dung lượng tối đa 2 MiB.")
+            if sample.getcomptype() != "NONE" or sample.getsampwidth() != 2 or sample.getnchannels() not in (1, 2):
                 raise ValueError
             if len(sample.readframes(sample.getnframes())) != sample.getnframes() * sample.getnchannels() * 2:
                 raise ValueError
     except (ValueError, wave.Error, ZeroDivisionError, EOFError):
-        raise InvalidRequest(400, "INVALID_REFERENCE_AUDIO", "Cần WAV PCM 16-bit, mono hoặc stereo, dài 3–8 giây và tối đa 2 MiB.") from None
+        raise InvalidRequest(400, "INVALID_REFERENCE_AUDIO", "Cần WAV PCM 16-bit, mono hoặc stereo, dài 3–60 giây.") from None
     try:
         profile = voice_profiles.create(user_id, voice_profiles.new_id(), name.strip(), "vi-VN", audio)
     except ValueError as error:

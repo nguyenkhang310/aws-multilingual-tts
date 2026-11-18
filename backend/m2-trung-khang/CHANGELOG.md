@@ -1,5 +1,10 @@
 # CHANGELOG — M2
 
+## 2026-11-18 — Đồng bộ giới hạn mẫu cho smoke VieNeu
+
+- Smoke validator local chấp nhận WAV 3–60 giây theo giới hạn web/app/API hiện tại; không thay model hoặc cách suy luận.
+- Kiểm source SDK `vieneu==3.8.4`: VieNeu v3 Turbo cắt reference còn 8 giây đầu nội bộ. Local root `.venv` ban đầu thiếu VieNeu/ONNX/librosa nên worker biến `ImportError` thành `VOICE_CLONE_FAILED`; thêm lỗi cấu hình riêng và cài đủ packages vào đúng `.venv` chạy backend. Inference local với reference 44,74 giây đạt, xuất 2,08 giây audio; thời gian inference 77,7 giây, chưa đánh giá độ giống. AWS chưa xác minh.
+
 ## 2026-11-16 — VOICE-02: smoke test VieNeu ONNX CPU (coded, locally tested)
 
 - Thêm script chuẩn bị artifacts từ revision pin của VieNeu-TTS v3 Turbo và MOSS ONNX codec, kiểm SHA-256 với các blob LFS có checksum công bố; tổng dung lượng 312 MiB, không đưa model vào Git. Thêm smoke script cho WAV 3–8 giây, xác nhận quyền dùng mẫu, sinh hai câu tiếng Việt thành MP3 và báo thời gian/RSS.

@@ -52,7 +52,7 @@ def publish(root, bucket, prefix, region):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--model-dir', type=Path, required=True, help='voice02-local/model từ script prepare_voice_clone_model.py')
+    parser.add_argument('--model-dir', type=Path, required=True, help='deployment/local/voice/model từ script prepare_voice_clone_model.py')
     parser.add_argument('--bucket', required=True, help='JobsBucketName của stack hiện tại')
     parser.add_argument('--prefix', default='voice-clone/vieneu-3.8.4')
     parser.add_argument('--region', default='us-east-1')

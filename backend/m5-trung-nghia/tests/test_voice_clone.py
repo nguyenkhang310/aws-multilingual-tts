@@ -9,11 +9,11 @@ from test_submit import FlowTestCase, Context, worker, submit, MP3
 from tts_common import db
 
 
-def reference_audio():
+def reference_audio(seconds=3):
     output = io.BytesIO()
     with wave.open(output, 'wb') as sample:
         sample.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
-        sample.writeframes(bytes(8000 * 2 * 3))
+        sample.writeframes(bytes(8000 * 2 * seconds))
     return output.getvalue()
 
 
@@ -66,6 +66,13 @@ class VoiceCloneTest(FlowTestCase):
                                   'body': json.dumps({'consent': False})}, None)
         status, result = response['statusCode'], json.loads(response['body'])
         self.assertEqual((status, result['error']['code']), (400, 'CONSENT_REQUIRED'))
+
+    def test_sixty_seconds_is_accepted_and_longer_audio_gets_duration_error(self):
+        status, _ = self.profile(reference_audio(60))
+        self.assertEqual(status, 201)
+        status, result = self.profile(reference_audio(61))
+        self.assertEqual((status, result['error']['code']), (400, 'REFERENCE_AUDIO_TOO_LONG'))
+        self.assertIn('vượt quá thời lượng tối đa 60 giây', result['error']['message'])
 
     def test_invalid_profile_id_is_a_client_error(self):
         result = submit.handler({'path': '/voice-profiles/bad', 'pathParameters': {'id': 'bad'}}, None)

@@ -24,8 +24,12 @@ def validate_reference(path):
         raise ValueError("Mẫu giọng phải là tệp WAV có dung lượng không quá 2 MiB.")
     info = sf.info(path)
     seconds = info.frames / info.samplerate
-    if info.format != "WAV" or not 3 <= seconds <= 8 or info.channels not in (1, 2):
-        raise ValueError("Cần WAV 3–8 giây, một hoặc hai kênh.")
+    if info.format != "WAV" or info.channels not in (1, 2):
+        raise ValueError("Cần WAV mono hoặc stereo.")
+    if seconds < 3:
+        raise ValueError("Mẫu giọng cần dài ít nhất 3 giây.")
+    if seconds > 60:
+        raise ValueError("Mẫu giọng vượt quá thời lượng tối đa 60 giây.")
     return round(seconds, 3)
 
 

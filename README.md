@@ -46,7 +46,7 @@ Repository được tổ chức theo trách nhiệm của năm thành viên. Fro
 | Chuyển văn bản thành MP3 | Có backend async và giao diện web/app. Một stack/web hiện có đã được chuyển sang Azure và ghi nhận demo ngày 08/11/2026. |
 | Chọn ngôn ngữ, giọng và tốc độ | Lấy từ `/voices`; danh mục Azure được xác minh theo resource/vùng khi chạy `configure`. |
 | Gemini TTS tùy chọn | Gemini 3.8 Flash TTS; 30 giọng, 71 lựa chọn ngôn ngữ/vùng, sắc thái cụ thể hoặc tự chọn theo nội dung. Có hai MP3 local qua Gemini thật; các tổ hợp còn lại và Sandbox chưa nghiệm thu. [Bật local](deployment/local/README.md#gemini-tts--thêm-nguồn-tạo-giọng). |
-| Hồ sơ giọng VieNeu thử nghiệm | Nhập WAV 3–8 giây, chọn hồ sơ và tinh chỉnh cách đọc trên web/app. Cần cài model CPU riêng; kiểm thử tích hợp dùng provider giả, chưa nghiệm thu model trên máy này hoặc AWS. [Cấu hình local](deployment/local/README.md#vieneu-nhại-giọng-trên-local). |
+| Hồ sơ giọng VieNeu thử nghiệm | Web nhận MP3/WAV 3–60 giây và gửi mẫu đã chuẩn hóa cho backend. VieNeu v3 Turbo hiện chỉ dùng tối đa 8 giây đầu khi suy luận; phần dài hơn không tăng thông tin model nhận. Mẫu sạch, một người nói vẫn quan trọng. Cần cài model CPU riêng; chưa nghiệm thu AWS. [Cấu hình local](deployment/local/voice/README.md). |
 | Nhập tài liệu và OCR | Có trong Tạo giọng đọc và Dịch và đọc, mỗi trang giữ nội dung riêng. PDF, DOCX, TXT, Markdown và ảnh JPG/PNG/WebP; tối đa 50 MB, 200.000 ký tự và 50.000 từ. Hai chế độ: Gemini qua backend (đọc ảnh, duyệt chữ trước khi dùng) hoặc OCR tại thiết bị. Cần bật Gemini ở backend; không tự fallback. |
 | Tài liệu dài | Chia thành các bản thu tối đa 10.000 ký tự; chọn từng phần hoặc tạo tuần tự, dừng khi gặp lỗi/quota. Chưa kiểm chứng trên Sandbox/điện thoại thật. |
 | Audio Truyện | Có code quản lý dự án → chương → đoạn, queue batch lưu ở S3, MP3 theo từng đoạn, Pause/Resume/Retry và ảnh bìa. Completion callback có thể cấp tiếp khi client đóng; chưa có scheduler độc lập nếu callback bị mất. Chưa deploy/kiểm Sandbox. |
@@ -237,8 +237,8 @@ Nếu chỉ muốn chạy backend riêng:
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r deployment/local/requirements.txt
-.venv/bin/python deployment/local/server.py voices
-.venv/bin/python deployment/local/server.py
+.venv/bin/python deployment/local/runtime/server.py voices
+.venv/bin/python deployment/local/runtime/server.py
 ```
 
 `voices` gọi Azure thật sau khi bạn điền Speech key. Runtime không gọi AWS thật; job/MP3 lưu trong Moto RAM và mất khi tắt API. `.env.example` nằm cạnh từng cấu hình, file env thật được ignore. Không chạy thêm từng dịch vụ bên dưới khi đã dùng `npm run dev` ở gốc repo.

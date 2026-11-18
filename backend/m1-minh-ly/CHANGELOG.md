@@ -1,5 +1,10 @@
 # CHANGELOG — M1
 
+## 2026-11-18 — Sắp xếp runtime local
+
+- Gom launcher `dev.py`/`dev.sh` vào `deployment/local/scripts/`; gom API, adapter ảnh bìa và tiện ích xoay Gemini vào `deployment/local/runtime/`. Cập nhật `npm run dev`, import và các hướng dẫn chạy để dùng đường dẫn mới; giữ nguyên `.env.local`, catalog, model và requirements ở các vị trí hiện hành.
+- Theo yêu cầu dọn các file trong `deployment/local/`, xóa bốn script thử riêng `test_connection.py`, `test_dev.py`, `test_gemini_rotation.py`, `test_runtime.py`. Kiểm tra runtime vẫn nằm trong suite M1 `tests/test_local_runtime.py`; chưa chạy suite trong lượt sắp xếp này.
+
 ## 2026-11-16 — STORY-05 route MP3 chương (local)
 
 - Thêm GET/POST `.../audio-plans/{planId}/chapter-audio` vào allowlist router hiện có, tiếp tục dùng demo token/scope và Lambda M5. M1 suite: 40 chạy, 14 skipped, không lỗi. Cần M1 review route trước deploy; chưa kiểm CloudFront/AWS.

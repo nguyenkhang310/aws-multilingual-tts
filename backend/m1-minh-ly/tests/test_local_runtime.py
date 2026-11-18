@@ -13,7 +13,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location('local_runtime_test', ROOT / 'deployment/local/server.py')
+spec = importlib.util.spec_from_file_location('local_runtime_test', ROOT / 'deployment/local/runtime/server.py')
 local = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(local)
 AVAILABLE = importlib.util.find_spec('moto') is not None and importlib.util.find_spec('dotenv') is not None

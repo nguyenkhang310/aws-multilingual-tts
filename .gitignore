@@ -47,5 +47,8 @@ frontend/app/public/pdf/
 
 story/
 
-# VOICE-02 local-only model, voice sample, virtualenv, cache and generated audio
+# VieNeu model, voice sample, virtualenv, cache and generated audio
+/voice-local/
 /voice02-local/
+/deployment/local/voice/*
+!/deployment/local/voice/README.md

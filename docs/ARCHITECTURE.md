@@ -113,7 +113,7 @@ Web/app dùng chung bộ sinh worker/WASM, model Paddle/VietOCR và sáu gói Te
 
 ### Runtime local bằng env
 
-Trước Sandbox, web `/api` qua Vite → Python local → router/submit/worker/history hiện có. Moto thay S3/SSM trong RAM; key từ env backend được đưa vào SSM mô phỏng, không tạo tài nguyên AWS. Catalog Azure chỉ tải khi người vận hành chạy `server.py voices`; giọng/dịch thật chỉ gọi khi người dùng yêu cầu. Media local có link ký + Range, không giả presigned URL AWS. Dữ liệu runtime mất khi tắt; đây không phải bằng chứng IAM/OAC/Lambda trên Sandbox. Xem [hướng dẫn local](../deployment/local/README.md).
+Trước Sandbox, web `/api` qua Vite → Python local → router/submit/worker/history hiện có. Moto thay S3/SSM trong RAM; key từ env backend được đưa vào SSM mô phỏng, không tạo tài nguyên AWS. Catalog Azure chỉ tải khi người vận hành chạy `deployment/local/runtime/server.py voices`; giọng/dịch thật chỉ gọi khi người dùng yêu cầu. Media local có link ký + Range, không giả presigned URL AWS. Dữ liệu runtime mất khi tắt; đây không phải bằng chứng IAM/OAC/Lambda trên Sandbox. Xem [hướng dẫn local](../deployment/local/README.md).
 
 ## Gemini TTS tùy chọn (13/11/2026)
 

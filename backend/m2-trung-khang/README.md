@@ -132,22 +132,21 @@ M2 review adapter, đầu ra MP3/ghép đoạn 1.000 ký tự, quota CAS `tts-ge
 
 ## Đánh giá VOICE-02 — VieNeu-TTS trên CPU
 
-VieNeu-TTS 3.8.4 ONNX int8 đã được thử local bằng mẫu WAV do người dùng cung cấp; kết quả nghe được người dùng nhận xét khá giống nhưng chưa hoàn toàn khớp. File mẫu và MP3 không được đưa vào tài liệu hoặc Git. Model/cache, môi trường thử và đầu ra nằm dưới `voice02-local/` ở gốc repo; thư mục này được Git ignore.
+VieNeu-TTS 3.8.4 ONNX int8 đã được thử local bằng mẫu âm thanh do người dùng cung cấp; kết quả nghe được người dùng nhận xét khá giống nhưng chưa hoàn toàn khớp. File mẫu và MP3 không được đưa vào tài liệu hoặc Git. Model/cache, môi trường thử và đầu ra nằm dưới `deployment/local/voice/`; Git chỉ theo dõi README hướng dẫn.
 
 ```powershell
-python -m venv voice02-local\.venv
-.\voice02-local\.venv\Scripts\python.exe -m pip install vieneu==3.8.4 --no-deps
-.\voice02-local\.venv\Scripts\python.exe -m pip install -r backend/m2-trung-khang/scripts/voice_clone_requirements.txt
-.\voice02-local\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/prepare_voice_clone_model.py --output-dir voice02-local\model
-.\voice02-local\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/voice_clone_smoke.py --reference voice02-local\reference.wav --model-dir voice02-local\model\hf-cache\hub\models--pnnbao-ump--VieNeu-TTS-v3-Turbo\snapshots\61b85e3d937fbbacb387714180e8182823512523 --cache-dir voice02-local\model\hf-cache --output-dir voice02-local\output --consent
+.\.venv\Scripts\python.exe -m pip install vieneu==3.8.4 --no-deps
+.\.venv\Scripts\python.exe -m pip install -r backend/m2-trung-khang/scripts/voice_clone_requirements.txt
+.\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/prepare_voice_clone_model.py --output-dir deployment\local\voice\model
+.\.venv\Scripts\python.exe backend/m2-trung-khang/scripts/voice_clone_smoke.py --reference deployment\local\voice\reference.wav --model-dir deployment\local\voice\model\hf-cache\hub\models--pnnbao-ump--VieNeu-TTS-v3-Turbo\snapshots\61b85e3d937fbbacb387714180e8182823512523 --cache-dir deployment\local\voice\model\hf-cache --output-dir deployment\local\voice\output --consent
 ```
 
-Mọi dữ liệu VOICE-02 đặt dưới `voice02-local/` ở gốc repo: `.venv`, model/cache, WAV giọng và MP3 đầu ra. Downloader khóa revision VieNeu `61b85e3d937fbbacb387714180e8182823512523` và MOSS ONNX codec `ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae`; artifacts tải về lần này chiếm khoảng 312 MiB. SHA-256 được kiểm cho artifact có checksum LFS công bố. Model Apache-2.0; cần tuân thủ license riêng của SDK và codec.
+Mọi dữ liệu VOICE-02 đặt dưới `deployment/local/voice/` ở gốc repo: `.venv`, model/cache, WAV giọng và MP3 đầu ra. Downloader khóa revision VieNeu `61b85e3d937fbbacb387714180e8182823512523` và MOSS ONNX codec `ceff0d0749bfb3fa2d61149794ec6feef0d1e1ae`; artifacts tải về lần này chiếm khoảng 312 MiB. SHA-256 được kiểm cho artifact có checksum LFS công bố. Model Apache-2.0; cần tuân thủ license riêng của SDK và codec.
 
 ## Tích hợp thử nghiệm VieNeu
 
-Source hiện có provider `vieneu`, API hồ sơ và UI web/app. Người dùng có thể thêm WAV PCM 16-bit, mono/stereo, dài 3–8 giây, tối đa 2 MiB; chọn hồ sơ rồi tạo TTS. Tinh chỉnh gồm `useRefCodes`, `denoise` và `temperature` trong dải 0,4–1,0. Đây là tham số model, không phải thanh đo độ giống; không bảo đảm một giá trị nào sẽ khớp hơn. VieNeu hiện chỉ đọc tiếng Việt trực tiếp, không dịch và không nhận sắc thái Azure/Gemini.
+Source hiện có provider `vieneu`, API hồ sơ và UI web/app. Web nhận MP3/WAV 3–60 giây, tối đa 10 MiB, chuẩn hóa mẫu thành WAV PCM 16 kHz mono trước khi gửi. App nhận WAV PCM 16-bit, mono/stereo, dài 3–60 giây, tối đa 2 MiB. M5/M3 lưu toàn bộ WAV; VieNeu v3 Turbo trong SDK `vieneu==3.8.4` tự cắt mẫu tham chiếu còn tối đa 8 giây đầu trước khi tạo audio. Vì vậy phần gửi sau 8 giây không tác động tới giọng hiện tại. Tinh chỉnh gồm `useRefCodes`, `denoise` và `temperature` trong dải 0,4–1,0. Đây là tham số model, không phải thanh đo độ giống; không bảo đảm một giá trị nào sẽ khớp hơn. VieNeu hiện chỉ đọc tiếng Việt trực tiếp, không dịch và không nhận sắc thái Azure/Gemini.
 
-Backend local dùng Moto cho metadata/S3 mô phỏng, còn model chạy trên CPU máy dev. Cần cài dependencies vào đúng Python chạy `deployment/local/server.py` và bật `VOICE_CLONE_ENABLED` trong `.env.local`; xem [hướng dẫn local](../../deployment/local/README.md#vieneu-nhại-giọng-trên-local). Không dùng key Azure/Gemini cho provider này.
+Backend local dùng Moto cho metadata/S3 mô phỏng, còn model chạy trên CPU máy dev. Cần cài dependencies vào Python `.venv` gốc repo mà `npm run dev` dùng; API nằm tại `deployment/local/runtime/server.py`. Bật `VOICE_CLONE_ENABLED` trong `deployment/local/.env.local`; xem [hướng dẫn local](../../deployment/local/README.md#vieneu-nhại-giọng-trên-local). Không dùng key Azure/Gemini cho provider này.
 
 Đường AWS đã có cờ mặc định tắt, template condition cho layer Python 3.12, model riêng trong JobsBucket, và quy trình `azure.py plan --voice-clone true` sau khi model được upload. Worker cần 3.072 MiB mặc định, timeout 900 giây và `/tmp` 2.048 MiB khi bật. Đây là code chưa được build/deploy hoặc kiểm quyền LabRole/AWS Academy; cần M1/M2/M3/M5 review trước khi vận hành. Chưa gọi là deployable hay AWS verified. Mã demo chung không cô lập hồ sơ; người dùng cùng mã có thể thấy/xóa profile.

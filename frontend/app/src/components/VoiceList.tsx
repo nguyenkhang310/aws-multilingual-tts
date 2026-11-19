@@ -23,7 +23,9 @@ export default function VoiceList({ onSelect, selected, onlyLanguage, showProvid
     normalize(`${v.name ?? v.id} ${v.description ?? ''} ${languageNames[v.lang] ?? v.lang} ${voiceGender(v.gender)}`).includes(normalize(query)));
   return <>
     {showProvider && <ProviderPicker />}
-    {provider === 'vieneu' && !onlyLanguage && !DEMO && <VoiceCloneManager onChanged={reloadVoices} />}
+    {provider === 'vieneu' && !onlyLanguage && !DEMO && <VoiceCloneManager onChanged={async () => {
+      setQuery(''); setFilter('all'); return reloadVoices();
+    }} />}
     <SearchField label="Tìm giọng đọc" placeholder="Tìm tên giọng, ngôn ngữ…" value={query} onChange={setQuery} />
     <ScrollView testID="voice-filters" horizontal style={{ flexGrow: 0, flexShrink: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
       {[{ id: 'all', title: 'Tất cả' }, { id: 'saved', title: 'Đã lưu' }, ...languages.filter(l => !onlyLanguage || l.lang === onlyLanguage).map(l => ({ id: l.lang, title: languageNames[l.lang] ?? l.lang }))].map(item =>

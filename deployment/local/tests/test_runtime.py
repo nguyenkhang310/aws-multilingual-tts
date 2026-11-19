@@ -10,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import URLError
 import zlib
 
-import server
+from deployment.local.runtime import server
 
 
 def png_cover():

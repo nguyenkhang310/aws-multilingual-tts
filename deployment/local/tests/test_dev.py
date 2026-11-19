@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-import dev
+from deployment.local.scripts import dev
 
 
 class LauncherTests(unittest.TestCase):

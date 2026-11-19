@@ -95,6 +95,8 @@ class VieNeuProvider:
             return encoder.encode(pcm) + encoder.flush()
         except PermanentProviderError:
             raise
+        except ImportError:
+            raise PermanentProviderError("VOICE_CLONE_DEPENDENCY_MISSING", "VieNeu thiếu thư viện cần thiết trên máy chủ. Cài các gói VOICE-02 vào Python đang chạy backend.") from None
         except Exception as error:
             raise PermanentProviderError("VOICE_CLONE_FAILED", "VieNeu chưa tạo được audio. Hãy kiểm tra mẫu giọng hoặc thử lại.") from error
         finally:

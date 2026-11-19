@@ -1,5 +1,10 @@
 # CHANGELOG — M5
 
+## 2026-11-18 — Mở rộng mẫu tham chiếu VieNeu tới 60 giây
+
+- API hồ sơ giọng chấp nhận WAV PCM 16-bit mono/stereo dài 3–60 giây; mẫu quá ngắn, quá dài và quá lớn có mã/thông báo riêng. Quá 60 giây trả `REFERENCE_AUDIO_TOO_LONG` với thông báo rõ vượt thời lượng.
+- Không đổi schema lưu hồ sơ hoặc luồng worker; toàn bộ WAV được lưu nhưng VieNeu v3 Turbo chỉ dùng tối đa 8 giây đầu khi suy luận. Chi tiết giới hạn được xác nhận từ SDK local; chưa kiểm AWS.
+
 ## 2026-11-16 — Bổ sung kiểm tra tiến độ chunk và tải MP3 chương
 
 - Thêm regression cho phần trăm một queue segment khi worker đã checkpoint chunk nội bộ. Kiểm tra `Content-Disposition` của MP3 chương có `filename` ASCII dự phòng và `filename*` UTF-8 đúng tên.

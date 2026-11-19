@@ -179,11 +179,11 @@ Web có bộ chọn **Nguồn giọng đọc** trong cài đặt giọng; app ch
 
 ### Nhại giọng VieNeu — thử nghiệm local/AWS
 
-Khi backend bật `VOICE_CLONE_ENABLED`, web/app có nguồn **VieNeu · Nhại giọng**. Trong danh sách giọng, thêm WAV PCM 16-bit mono/stereo dài 3–8 giây, tối đa 2 MiB, xác nhận quyền sử dụng rồi chọn hồ sơ vừa thêm. Mẫu/hồ sơ lưu riêng trong Jobs bucket; voice clone chỉ đọc tiếng Việt và không hỗ trợ dịch hoặc sắc thái Azure/Gemini.
+Khi backend bật `VOICE_CLONE_ENABLED`, web/app có nguồn **VieNeu · Nhại giọng**. Web nhận MP3/WAV 3–60 giây, tối đa 10 MiB, chuẩn hóa toàn bộ mẫu thành WAV PCM 16 kHz mono trước khi gửi. App nhận WAV PCM 3–60 giây, tối đa 2 MiB. API lưu mẫu đã gửi, nhưng VieNeu v3 Turbo hiện tự giới hạn phần tham chiếu còn tối đa 8 giây đầu khi suy luận; âm thanh sau đó không tăng thông tin giọng cho model. Mẫu rõ, ít nhiễu và chỉ có một người nói vẫn là yếu tố quan trọng.
 
 Sau bản nghe đầu, giữ nguyên câu và đổi **một** điều chỉnh để dễ so sánh. Web/app có **Bám cách nói mẫu**, **Lọc nhiễu mẫu** và **Độ ổn định**; mức ổn định cao giảm biến thiên khi tạo. Cấu hình khác tạo request khác; phát lại cùng nội dung/cấu hình dùng lại kết quả idempotent. Các bản khác nhau giữ trong Bản thu. Điều khiển là tham số VieNeu, không phải điểm số chất lượng và không bảo đảm tăng độ giống. Cùng mã demo hiện dùng chung scope `demo`; người có cùng mã có thể thấy hoặc xóa hồ sơ.
 
-Local cần cài VieNeu vào Python `.venv` dùng bởi `npm run dev` và đặt model trong `voice02-local/`; xem [hướng dẫn VieNeu local](../deployment/local/README.md#vieneu-nhại-giọng-trên-local). AWS có code candidate để đóng gói dependency Linux, giữ model riêng trong Jobs bucket và bật cờ qua SAM. Chưa chạy SAM build/validate, kiểm quyền LabRole hoặc deploy; không coi là AWS verified hay deployable đã nghiệm thu.
+Local cần cài VieNeu vào Python `.venv` dùng bởi `npm run dev` và đặt model trong `deployment/local/voice/`; xem [hướng dẫn VieNeu local](../deployment/local/voice/README.md). AWS có code candidate để đóng gói dependency Linux, giữ model riêng trong Jobs bucket và bật cờ qua SAM. Chưa chạy SAM build/validate, kiểm quyền LabRole hoặc deploy; không coi là AWS verified hay deployable đã nghiệm thu.
 
 Kiểm tra trong thư mục app:
 

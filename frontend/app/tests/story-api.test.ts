@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { setDemoToken } from '../src/lib/api';
 import { storyApi } from '../src/lib/story-api';
-import { storyBatchApi } from '../src/lib/story-batch-api';
+import { storyBatchApi } from '../src/lib/story-api';
 import { chapterDisplayTitle, chapterLabel, chapterNumberFromFilename, type StoryProject } from '../../shared/story';
 
 test('Tên chương từ file không lặp tiền tố, giữ tên khác và số chương đã chọn', () => {

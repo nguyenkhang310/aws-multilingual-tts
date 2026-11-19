@@ -3,7 +3,7 @@ import unittest
 from urllib.error import HTTPError
 from urllib.request import Request
 
-from gemini_rotation import install, parse_keys
+from deployment.local.runtime.gemini_rotation import install, parse_keys
 
 
 class FakeOpener:

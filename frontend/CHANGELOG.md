@@ -1,5 +1,18 @@
 # CHANGELOG — M4
 
+## 2026-11-20 — Gộp VieNeu và bố cục local từ M5
+
+- Gộp bốn commit tới `b9440fd`. Giữ giới hạn web MP3/WAV 3–60 giây, 10 MiB; app WAV 3–60 giây, 2 MiB. Web để Web Audio đổi tần số lấy mẫu sang 16 kHz trước khi ghi WAV mono. Lưu hồ sơ xong làm mới catalog và bỏ bộ lọc cũ trên cả web/app.
+- Bỏ tên tệp hiển thị hai lần, CSS không còn dùng và hai tệp app chỉ xuất lại API truyện. Giữ thông báo hồ sơ dùng chung theo mã demo. App dọn cả tệp tạm bị từ chối. Backend kiểm kích thước trước khi đọc WAV và báo riêng lỗi thiếu thư viện VieNeu.
+- Giữ 23 ca launcher, TLS, runtime và xoay key Gemini trong `deployment/local/tests/`. Kiểm `npm run dev` với cấu hình mẫu: API, Vite và Metro đều mở được, cả ba cổng được giải phóng sau SIGINT.
+- **687 kiểm thử đạt:** M1 40, M2 115, M3 67, M5 183, local 23, web 147, app 112. Build web, app typecheck/lint, Expo export iOS/Android/web và `cfn-lint` đạt. Bốn luồng Chrome trên web/Expo web đã kiểm tệp 61 giây bị từ chối, tệp 60 giây lưu được và giọng mới xuất hiện. Dùng WAV/MP3 tổng hợp và API local Moto. Chưa chạy model VieNeu thật, thiết bị native hoặc Sandbox.
+
+## 2026-11-18 — Dùng toàn bộ mẫu nhại giọng tối đa 60 giây
+
+- Web gửi toàn bộ audio sau khi chuyển thành WAV PCM 16 kHz mono. Mã VieNeu v3 Turbo tự cắt mẫu tham chiếu còn tối đa 8 giây đầu khi suy luận; phần sau không tạo thêm lợi ích cho model hiện tại. Web báo riêng mẫu dưới 3 giây, quá 60 giây, sai định dạng hoặc vượt dung lượng.
+- App cập nhật giới hạn hiển thị 3–60 giây, bỏ dòng về vùng dùng chung mã demo và tô thông báo lỗi bằng màu lỗi thay vì màu thành công. API M5 và smoke validator M2 cùng nhận 3–60 giây.
+- Chưa chạy tests/build và chưa thử suy luận VieNeu với mẫu 60 giây; chưa gọi AWS/provider, deploy hoặc commit.
+
 ## 2026-11-17 — Gộp M5, sửa lỗi tích hợp và nghiệm thu local
 
 - Gộp đủ 33 commit của Nghĩa tới `082f223`, giữ lịch sử và các tính năng ghép MP3 chương, backup draft/thuật ngữ, hồ sơ giọng VieNeu. Giữ riêng lựa chọn Azure/Gemini, kết quả dịch, phiên soạn, Liquid Glass, animation và chiều cao sidebar gọn từ M4.

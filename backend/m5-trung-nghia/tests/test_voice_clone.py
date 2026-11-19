@@ -1,4 +1,5 @@
 import base64
+import builtins
 import io
 import json
 import os
@@ -9,11 +10,11 @@ from test_submit import FlowTestCase, Context, worker, submit, MP3
 from tts_common import db
 
 
-def reference_audio():
+def reference_audio(seconds=3):
     output = io.BytesIO()
     with wave.open(output, 'wb') as sample:
         sample.setparams((1, 2, 8000, 0, 'NONE', 'not compressed'))
-        sample.writeframes(bytes(8000 * 2 * 3))
+        sample.writeframes(bytes(8000 * 2 * seconds))
     return output.getvalue()
 
 
@@ -66,6 +67,41 @@ class VoiceCloneTest(FlowTestCase):
                                   'body': json.dumps({'consent': False})}, None)
         status, result = response['statusCode'], json.loads(response['body'])
         self.assertEqual((status, result['error']['code']), (400, 'CONSENT_REQUIRED'))
+
+    def test_sixty_seconds_is_accepted_and_longer_audio_gets_duration_error(self):
+        status, _ = self.profile(reference_audio(60))
+        self.assertEqual(status, 201)
+        status, result = self.profile(reference_audio(61))
+        self.assertEqual((status, result['error']['code']), (400, 'REFERENCE_AUDIO_TOO_LONG'))
+        self.assertIn('vượt quá thời lượng tối đa 60 giây', result['error']['message'])
+
+    def test_short_and_oversized_samples_return_specific_errors(self):
+        for audio, code in [(reference_audio(2), 'REFERENCE_AUDIO_TOO_SHORT'),
+                            (bytes(2 * 1024 * 1024 + 1), 'REFERENCE_AUDIO_TOO_LARGE')]:
+            status, result = self.profile(audio)
+            self.assertEqual((status, result['error']['code']), (400, code))
+        self.assertFalse(self.s3.objects)
+
+    def test_worker_reports_missing_clone_dependencies(self):
+        from providers import get_provider
+
+        _, profile = self.profile()
+        voice = profile['voiceProfileId']
+        status, result = self.post(**self.good(provider='vieneu', voice=voice, voiceProfileId=voice))
+        self.assertEqual(status, 202)
+        original_import = builtins.__import__
+
+        def import_without_encoder(name, *args, **kwargs):
+            if name == 'lameenc':
+                raise ImportError('fixture')
+            return original_import(name, *args, **kwargs)
+
+        with mock.patch.object(worker, 'get_provider', get_provider), \
+                mock.patch('builtins.__import__', side_effect=import_without_encoder):
+            outcome = worker.handler({'userId': 'demo', 'jobId': result['jobId']}, Context())
+        self.assertEqual(outcome['status'], 'FAILED')
+        job = db.get_job('demo', result['jobId'])
+        self.assertEqual(job['errorCode'], 'VOICE_CLONE_DEPENDENCY_MISSING')
 
     def test_invalid_profile_id_is_a_client_error(self):
         result = submit.handler({'path': '/voice-profiles/bad', 'pathParameters': {'id': 'bad'}}, None)

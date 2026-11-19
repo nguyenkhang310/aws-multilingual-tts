@@ -13,7 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, build_opener
 
 import certifi
-import server
+from deployment.local.runtime import server
 
 
 class ConnectionTests(unittest.TestCase):

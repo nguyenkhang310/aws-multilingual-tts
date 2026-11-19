@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -eu
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../../.."
 
 if [ -x .venv/Scripts/python.exe ]; then
   python_cmd=.venv/Scripts/python.exe
@@ -11,4 +11,4 @@ else
   exit 1
 fi
 
-exec "$python_cmd" deployment/local/dev.py "$@"
+exec "$python_cmd" -m deployment.local.scripts.dev "$@"
